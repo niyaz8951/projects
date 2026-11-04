@@ -6,10 +6,14 @@
   Core.requireLogin({ tile: PR.TILE }).then(function (me) {
     var canEdit = PR.canEdit(me);
     var rows = [];
+    var seesAll = !!(me.tile_admin || me.is_super); // a tile admin or the super user sees every project; the database confirms it per answer
     var timer = null;
     var seq = 0;
 
     $('#new').hidden = !canEdit;
+    $('#intro').textContent = seesAll
+      ? 'Every project of the team. Open a project to see its details and history.'
+      : 'Your projects. Open a project to see its details and history.';
 
     // filters
     PR.lists().then(function (lists) {
@@ -33,7 +37,8 @@
         var box = el('div', { class: 'state' },
           el('h2', { text: filtered() ? 'No project matches' : 'No projects yet' }),
           el('p', { text: filtered() ? 'Nothing in the register fits this search and these filters.'
-                                     : 'The register is empty. ' + (canEdit ? 'Start the first project.' : 'Projects appear here once a colleague creates one.') }),
+                                     : (seesAll ? 'The register is empty. ' : 'You have no projects yet. ')
+                                       + (canEdit ? 'Start the first project.' : 'Projects appear here once a colleague creates one for you.') }),
           filtered() ? el('button', { class: 'btn', type: 'button', text: 'Clear filters', on: { click: function () {
               $('#q').value = ''; $('#f-region').value = ''; $('#f-type').value = ''; load(); } } })
             : canEdit ? el('button', { class: 'btn primary', type: 'button', text: 'New project', on: { click: create } }) : null);
@@ -51,14 +56,14 @@
           el('td', null, el('span', { class: 'name', text: p.name }), el('span', { class: 'sub code', text: p.code })),
           el('td', { 'data-label': 'Client' }, p.client_name, el('span', { class: 'sub', text: p.client_type })),
           el('td', { 'data-label': 'Region', text: p.region }),
-          el('td', { 'data-label': 'Created by', text: p.created_by_name }),
+          seesAll ? el('td', { 'data-label': 'Created by', text: p.created_by_name }) : null,
           el('td', { 'data-label': 'Last changed', text: Core.date(p.updated_at) }));
         tbody.appendChild(tr);
       });
       host.appendChild(el('div', { class: 'table-wrap' },
         el('table', { class: 'pr-table' },
           el('thead', null, el('tr', null, el('th', { text: 'Project' }), el('th', { text: 'Client' }), el('th', { text: 'Region' }),
-            el('th', { text: 'Created by' }), el('th', { text: 'Last changed' }))),
+            seesAll ? el('th', { text: 'Created by' }) : null, el('th', { text: 'Last changed' }))),
           tbody)));
     }
 
@@ -68,6 +73,7 @@
       return Api.rpc('projects_list', filters()).then(function (r) {
         if (my !== seq) return; // an older answer arriving late
         rows = r || [];
+        if (rows.length && rows[0].sees_all !== undefined) seesAll = !!rows[0].sees_all; // the database's answer wins
         render();
       }).catch(function (err) { if (my === seq) { $('#count').textContent = ''; PR.errorBox($('#list'), err); } });
     }

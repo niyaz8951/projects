@@ -1,4 +1,4 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001_init.sql. Rolled back.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql, db/projects/001_init.sql and 002_visibility.sql. Rolled back.
 -- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
 -- demo_user with 'edit') and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
@@ -100,12 +100,28 @@ begin
   select public.projects_create('Second Sample', 'Government', 'Sample Ministry', 'Qatar') into v;
   if (v ->> 'code') <= v_code then raise exception 'code not increasing'; end if;
   select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'admin sees both'; end if;
+  if not (select bool_and(sees_all) from public.projects_list(null, null, null)) then raise exception 'admin sees_all'; end if;
+  select public.projects_get(v_id) into v; if (v ->> 'created_by_name') <> 'demo_user' then raise exception 'admin opens any'; end if;
+  perform public.projects_update(v_id, 'Sample Tower C', 'Contractor', 'Sample Consultants', 'UAE'); -- admin edits any
   reset role;
+
+  -- another plain user with the tile and 'edit': only his own projects; another user's record is NOT_FOUND
+  insert into core.tile_access (user_id, tile_id, is_admin, rights)
+    select id, 'projects', false, array['edit'] from t_ids where k = 'demo_none';
+  perform pg_temp.act_as('demo_none');
+  select count(*) into n from public.projects_list(null, null, null); if n <> 0 then raise exception 'other user sees nothing: %', n; end if;
+  perform pg_temp.expect_error(format('select public.projects_get(%L)', v_id), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.projects_update(%L, ''x'', ''Consultant'', ''x'', ''UAE'')', v_id), 'NOT_FOUND');
+  select public.projects_create('Third Sample', 'Contractor', 'Sample Builders', 'Oman') into v;
+  select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'other user sees own'; end if;
+  if (select bool_or(sees_all) from public.projects_list(null, null, null)) then raise exception 'user sees_all'; end if;
+  reset role;
+  delete from core.tile_access where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_none');
 
   -- a user with the tile but no right: reads, cannot write
   update core.tile_access set rights = '{}' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
   perform pg_temp.act_as('demo_user');
-  select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'reader sees list'; end if;
+  select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'reader sees own: %', n; end if;
   perform pg_temp.expect_error('select public.projects_create(''x'', ''Consultant'', ''x'', ''UAE'')', 'NO_RIGHT');
   perform pg_temp.expect_error(format('select public.projects_update(%L, ''x'', ''Consultant'', ''x'', ''UAE'')', v_id), 'NO_RIGHT');
   reset role;
