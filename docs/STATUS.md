@@ -22,8 +22,9 @@
 - 2026-11-05 - Step 1 checked by the owner on live: tile on, 001 applied, first project `P-2026-0001` created, list and project page shown.
 
 ## Next
-- Step 2, maps: `projects.locations` (label, address, lat, lon per project), a map card on the project page and `map.html` for the register. Drawn without outside tiles or scripts: an SVG outline of the region copied into `vendor/` with its licence (Natural Earth, public domain) and pins placed by a simple projection; an "Open in Google Maps" link per site. Street tiles only if the owner allows an exception through `docs/CORE-REQUESTS.md`.
-- Step 3, compliance review inside a project: specification in (PDF to bucket `projects`, or pasted text), clauses to fill with Compliance / Remarks, record page, Excel down and up, history lines. Brings the bucket `projects` and its policies.
-- Step 4, product options inside a project: options compared side by side, Excel. Then the "Next step" card, tool tiles and "Download project" as one Excel, as the old project page had (`docs/TILE.md`, decisions 2026-11-05).
-- With the first step that stores files: bucket `projects` with policies on `<project-id>/...`.
-- Open question for later: delete or close a project, once it holds maps, reviews and options.
+- **Correction 2026-11-05:** "Maps" in step 2 are the rule book and knowledge maps (what the compliance suggestions read as if / else if), not project locations; the owner updates the wording in the Claude project instructions. Details and the whole flow: `docs/TILE.md`, decisions 2026-11-05.
+- Step 2, **Maps**: `projects.maps`, `projects.map_nodes`, `projects.map_images` (images shrunk in the browser, thumbnails); pages `maps.html` (list, search, add) and `map.html?id=` (tree and outline views, read / edit, special notes, links, import / export outline, verify); kind = knowledge or rule book (from a template); sharing per map: only me / team reads / team edits; right `maps`. The rule format and the decision order are fixed here so step 3 can run them.
+- Step 3, **Compliance review**: products and factories as data; `projects.spec_runs` + `spec_lines` (conversion in the browser, pdf.js in `vendor/`), `projects.library` per product and factory, record page with six answers and remarks, Excel down and up, "Use this answer" for editors (right `library`); suggestions from library, earlier answers and rule book.
+- Step 4, **Product options** + **datasheet reader**: row mapping per product, reader for AHU and FCU, tables saved in the project (`projects.datasheets`), values per factory (`projects.option_values`, `option_extras`), tree and series tables, Excel; right `options`. Then datasheet chips, number comparison and "Specification beside datasheet" in the record.
+- Step 5, project page glue: Next step card, tool tiles, Download project (one Excel), history lines for every action.
+- Open question for later: delete or close a project, once it holds records, tables and options.
