@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-loading>
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cykpvtekrdfmqimtrcps.supabase.co; connect-src 'self' https://cykpvtekrdfmqimtrcps.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects - DAME HUB</title>
+<link rel="stylesheet" href="/dame-hub/core/v1/theme.css">
+<link rel="stylesheet" href="/projects/assets/pr.css">
+<link rel="icon" href="/dame-hub/core/v1/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/dame-hub/core/v1/icons/apple-touch-icon.png">
+<script src="/dame-hub/core/v1/config.js" defer></script>
+<script src="/dame-hub/core/v1/api.js" defer></script>
+<script src="/dame-hub/core/v1/core.js" defer></script>
+<script src="/projects/assets/pr-common.js" defer></script>
+<script src="/projects/assets/pr-list.js" defer></script>
+</head>
+<body>
+<header id="topbar"></header>
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Projects</h1>
+      <p class="muted">The team's project register. Open a project to see its details and history.</p>
+    </div>
+    <button class="btn primary" type="button" id="new" hidden>New project</button>
+  </div>
+
+  <div class="card">
+    <div class="pr-filters" id="filters">
+      <div class="field">
+        <label for="q">Find</label>
+        <input id="q" type="search" placeholder="Project, client or code" maxlength="120" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-region">Region</label>
+        <select id="f-region"><option value="">All regions</option></select>
+      </div>
+      <div class="field">
+        <label for="f-type">Client type</label>
+        <select id="f-type"><option value="">All client types</option></select>
+      </div>
+    </div>
+    <div class="pr-bar">
+      <span class="pr-count" id="count"></span>
+      <button class="btn small" type="button" id="download" hidden>Download list (CSV)</button>
+    </div>
+    <div id="list"></div>
+  </div>
+</main>
+</body>
+</html>
