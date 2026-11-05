@@ -49,7 +49,7 @@
   /* In Edit a line is first drawn as text and gets its boxes when it comes near the window (Hub.lazyRows). */
   var lazy = Hub.lazyRows(function (tr) { return lineRow(tr._line, true); });
   function lineRow(l, boxes) {
-    var comp = el("input", { "class": "input", list: "answers", value: l.compliance || "", maxlength: "200", "aria-label": "Compliance" });
+    var comp = Hub.allChoices(el("input", { "class": "input", list: "answers", value: l.compliance || "", maxlength: "200", "aria-label": "Compliance" }));
     var rem = el("textarea", { "class": "input", rows: "1", maxlength: "4000", "aria-label": "Remarks" }); rem.value = l.remarks || ""; Hub.autoGrow(rem);
     var note = el("textarea", { "class": "input", rows: "1", maxlength: "4000", "aria-label": "Internal Comments", placeholder: "Note for users  # for reviewers" }); note.value = l.comments || ""; Hub.autoGrow(note);
     // Enter in Compliance goes to the next line, so a run of answers is typed without the mouse

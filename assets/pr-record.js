@@ -154,7 +154,7 @@
       if (editing) lazy.watch(plain);
       return plain;
     }
-    var comp = el("input", { "class": "input", value: s.c, maxlength: "200", list: "rc-words", "aria-label": "Compliance" });
+    var comp = Hub.allChoices(el("input", { "class": "input", value: s.c, maxlength: "200", list: "rc-words", "aria-label": "Compliance" }));
     var rem = el("textarea", { "class": "input", rows: "1", maxlength: "4000", "aria-label": "Remarks" }); rem.value = s.r; Hub.autoGrow(rem);
     var tr = el("tr", { "class": "line edit" + rowClass }, [
       el("td", { "class": "sr " + kind, text: l.sr }), el("td", {}, [text, reason, chips]), el("td", { "data-label": "Compliance" }, [comp]), el("td", { "data-label": "Remarks" }, [rem]),

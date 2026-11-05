@@ -164,6 +164,31 @@
     return { watch: function (tr) { tr._lazy = true; if (io) io.observe(tr); else return swap(tr); return tr; }, now: swap, on: !!io, stop: function () { if (io) io.disconnect(); } };
   }
 
+  /* ---------- an answer box with a list (datalist): every choice on a click ----------
+     A browser shows only the choices that match what the box holds, so a box already answered "Comply" offered
+     "Comply" and "Comply with Remarks" only (owner, 2026-11-05: "whenever a drop down is clicked all options must be
+     available"). On a click the answer moves into the placeholder and the box is emptied, so the whole list shows;
+     leaving the box without picking or typing puts the answer back (no save: the value is the same), and Escape does
+     too. Typing still narrows the list as before. Call it before the box's own blur / change handlers are added. */
+  function allChoices(input) {
+    var held = null, hint = input.placeholder;
+    function open() {
+      if (held !== null || !input.value) return;
+      held = input.value; input.placeholder = held; input.value = '';
+    }
+    function restore() {
+      if (held === null) return;
+      if (!input.value) input.value = held;
+      held = null; input.placeholder = hint;
+    }
+    input.addEventListener('mousedown', open);
+    input.addEventListener('touchstart', open, { passive: true });
+    input.addEventListener('input', function () { if (held !== null && input.value) { held = null; input.placeholder = hint; } });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Escape' && held !== null) { input.value = held; held = null; input.placeholder = hint; } });
+    input.addEventListener('blur', restore);
+    return input;
+  }
+
   /* ---------- the pages' back link ("Back to <place>") ---------- */
   function setBack(label, href) {
     var a = document.getElementById('back');
@@ -178,7 +203,7 @@
     date: function (iso, time) { return time ? Core.dateTime(iso) : Core.date(iso); },
     param: Core.param, go: Core.go, setBack: setBack,
     skeleton: skeleton, emptyState: emptyState, more: more, dock: dock, dragClose: dragClose,
-    autoHide: autoHide, autoGrow: autoGrow, lazyRows: lazyRows,
+    autoHide: autoHide, autoGrow: autoGrow, lazyRows: lazyRows, allChoices: allChoices,
     token: function () { return ''; },                                   // the core sends the session itself
     requireLogin: function (o) { return Core.requireLogin({ tile: PR.TILE, right: o && o.right }); },
     canEdit: function () { return PR.canEdit(Core.user); },
