@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en" data-loading>
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cykpvtekrdfmqimtrcps.supabase.co; connect-src 'self' https://cykpvtekrdfmqimtrcps.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Read a datasheet - DAME HUB</title>
+<link rel="stylesheet" href="/dame-hub/core/v1/theme.css">
+<link rel="stylesheet" href="/projects/assets/pr.css">
+<link rel="icon" href="/dame-hub/core/v1/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/dame-hub/core/v1/icons/apple-touch-icon.png">
+<script src="/dame-hub/core/v1/config.js" defer></script>
+<script src="/dame-hub/core/v1/api.js" defer></script>
+<script src="/dame-hub/core/v1/core.js" defer></script>
+<script src="/projects/vendor/pdfjs/pdf.min.js" defer></script>
+<script src="/projects/assets/ds-parse.js" defer></script>
+<script src="/projects/assets/ds-fcu.js" defer></script>
+<script src="/projects/assets/ds-read.js" defer></script>
+<script src="/projects/assets/ds-xlsx.js" defer></script>
+<script src="/projects/assets/pr-xlsx.js" defer></script>
+<script src="/projects/assets/pr-common.js" defer></script>
+<script src="/projects/assets/pr-datasheet.js" defer></script>
+</head>
+<body>
+<header id="topbar"></header>
+<main>
+  <p><a class="btn small ghost" id="back" href="/projects/">&larr; Project</a></p>
+  <div class="page-head">
+    <div>
+      <h1>Read a datasheet</h1>
+      <p class="muted" id="intro">Product datasheet PDF in, one column per unit out. The table is saved in the project.</p>
+    </div>
+  </div>
+
+  <div id="loading"></div>
+
+  <div id="body" hidden>
+    <!-- 1. product -->
+    <section class="card" aria-labelledby="h-unit">
+      <h2 id="h-unit">Product</h2>
+      <div class="pr-filters pr-one">
+        <div class="field">
+          <label for="dn-product">Product</label>
+          <select id="dn-product" disabled><option value="">Loading</option></select>
+        </div>
+      </div>
+      <p class="hint" id="dn-scope-hint" role="status">Choose a product to continue.</p>
+    </section>
+
+    <!-- 2. datasheet -->
+    <section class="card" id="dn-upload" aria-labelledby="h-file" hidden>
+      <h2 id="h-file">Datasheet</h2>
+      <button type="button" class="dn-drop" id="dn-drop">
+        <strong>Choose the datasheet PDF or drop it here</strong>
+        <span>Daikin AHU technical report (ASTRAWEB) or Daikin FAN COIL UNIT technical report (McQuay Smart Tools). Text PDF only, not a scan. A PDF with several units, or several PDFs, gives one column per unit.</span>
+      </button>
+      <input type="file" id="dn-file" class="pr-hidden-submit" accept=".pdf,application/pdf" multiple tabindex="-1" aria-hidden="true">
+      <div class="dn-run">
+        <div class="notice" id="dn-status" role="status" aria-live="polite" hidden></div>
+        <button type="button" class="btn small" id="dn-cancel" hidden>Cancel</button>
+      </div>
+      <div class="notice warning" id="dn-map-note" hidden></div>
+      <p class="hint">The PDF is read on your device and is never uploaded. The table made from it is saved in the project. New section and row names go to the product's row mapping (one list per product, for every factory and every user), and the values of the mapped rows go to the Product Options of the factory, where a reviewer approves them. The project name, reference and unit tags never go to Product Options.</p>
+    </section>
+
+    <!-- 3. result -->
+    <section class="card" id="dn-result" aria-labelledby="h-result" hidden>
+      <div class="pr-card-head">
+        <div>
+          <h2 id="h-result">Result</h2>
+          <p class="muted" id="dn-title"></p>
+        </div>
+        <div class="row">
+          <button type="button" class="btn primary" id="dn-download">Download Excel</button>
+          <button type="button" class="btn" id="dn-clear">Clear</button>
+        </div>
+      </div>
+      <div class="notice" id="dn-saved" role="status" aria-live="polite" hidden></div>
+      <div class="notice warning" id="dn-failed" hidden></div>
+      <div class="chips" id="dn-facts"></div>
+      <div class="notice dn-diff" id="dn-diff" hidden>
+        <p id="dn-diff-text"></p>
+        <label class="check" id="dn-only-wrap"><input type="checkbox" id="dn-only"> Only rows that differ</label>
+      </div>
+      <div class="notice warning" id="dn-warn" hidden></div>
+      <div class="state" id="dn-empty" hidden><p>The row mapping for this product leaves out every row of this datasheet. Ask a reviewer to check the row mapping in Product Options.</p></div>
+      <div class="table-wrap dn-preview" id="dn-table" tabindex="0" role="region" aria-labelledby="h-result">
+        <table>
+          <colgroup id="dn-cols"></colgroup>
+          <thead><tr id="dn-head-row"></tr></thead>
+          <tbody id="dn-body"></tbody>
+        </table>
+      </div>
+      <p class="hint">Rows and wording follow the product's row mapping, the same for every factory and every user; values come from the datasheet. Remarks stay empty for you to fill in Excel. Check the table against the datasheet before sending it out.</p>
+    </section>
+  </div>
+</main>
+</body>
+</html>

@@ -15,16 +15,11 @@
 
     function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
-    /* The two tools come in the next steps; until then their buttons say so, in the same place they will sit. */
-    var SOON = {
-      datasheet: { title: 'Read a datasheet', step: 2, text: 'Reading a datasheet PDF into a table of values per unit comes in step 2. Until then this project holds only its details.' },
-      spec:      { title: 'Add a specification', step: 3, text: 'Turning a specification PDF or text into clauses, and filling them with the datasheet values, the approved Product Options and the library answers, comes in step 3.' }
-    };
-    function soon(key) {
-      var s = SOON[key];
-      return Core.sheet({ title: s.title, modal: true,
-        body: el('div', { class: 'pr-soon' }, el('p', { class: 'notice accent', text: 'Coming in step ' + s.step }), el('p', { text: s.text })),
-        actions: [{ label: 'Close', kind: 'primary', value: true }] });
+    /* Where each tool button leads. The specification tool comes in step 3; until then its button says so, in the same place it will sit. */
+    var readSheet = '/projects/datasheet.html?project=' + encodeURIComponent(id);
+    function go(key) {
+      if (key === 'datasheet') { Core.go(readSheet); return; }
+      return PR.soon('Add a specification', 3, 'Turning a specification PDF or text into clauses, and filling them with the datasheet values, the approved Product Options and the library answers, comes in step 3.');
     }
 
     /* The one thing to do next, worked out from what the project holds (step 1: nothing yet, so the datasheet comes first). */
@@ -32,7 +27,7 @@
       var runs = data.runs || [], notes = data.notes || [];
       var eyebrow = 'Next step', title, sub, acts = [];
       function act(text, key, ghost) {
-        acts.push(el('button', { type: 'button', class: 'btn' + (ghost ? '' : ' primary'), text: text, on: { click: function () { soon(key); } } }));
+        acts.push(el('button', { type: 'button', class: 'btn' + (ghost ? '' : ' primary'), text: text, on: { click: function () { go(key); } } }));
       }
       if (!runs.length && !notes.length) {
         eyebrow = 'Step 1 of 2 (optional)';
@@ -56,7 +51,8 @@
     }
 
     function toolTile(name, text, icon, n, one, many, key) {
-      return el('a', { class: 'tile pr-tile ' + (n ? 'has' : 'none'), href: '#', 'aria-label': name, on: { click: function (e) { e.preventDefault(); soon(key); } } },
+      return el('a', { class: 'tile pr-tile ' + (n ? 'has' : 'none'), href: key === 'datasheet' ? readSheet : '#', 'aria-label': name,
+                       on: { click: function (e) { if (key !== 'datasheet' || !canEdit) { e.preventDefault(); if (canEdit) go(key); else PR.readOnly(); } } } },
         el('span', { class: 'icon i-' + icon }),
         el('span', null, el('span', { class: 'name', text: name }), el('span', { class: 'tagline', text: text }),
           el('span', { class: 'flag muted', text: n ? plural(n, one, many) + ' saved' : 'Nothing saved yet' })));
@@ -64,7 +60,36 @@
 
     function emptyState(host, title, text, button, key) {
       Core.clear(host).appendChild(el('div', { class: 'state tight' }, el('h3', { text: title }), el('p', { text: text }),
-        canEdit ? el('button', { type: 'button', class: 'btn', text: button, on: { click: function () { soon(key); } } }) : null));
+        canEdit ? el('button', { type: 'button', class: 'btn', text: button, on: { click: function () { go(key); } } }) : null));
+    }
+
+    function bare(names) { return String(names || '').split(', ').map(function (n) { return n.replace(/\.[A-Za-z0-9]{1,5}$/, ''); }).join(', '); }
+
+    /* The datasheet tables of the project: view, Download Excel, Remove (right edit). */
+    function noteRow(n) {
+      var view = '/projects/note.html?id=' + encodeURIComponent(n.id);
+      return el('tr', null,
+        el('td', null, el('a', { class: 'name', href: view, title: 'View the table', text: bare(n.file_names) || 'Datasheet' }),
+          el('span', { class: 'sub', text: Core.dateTime(n.created_at) })),
+        el('td', { 'data-label': 'Product', text: n.product + (n.factory ? ' \u00b7 ' + n.factory : '') }),
+        el('td', { 'data-label': 'Size', text: plural(n.units, 'unit', 'units') + ', ' + plural(n.rows, 'row', 'rows') }),
+        el('td', { 'data-label': 'By', text: '@' + n.username }),
+        el('td', { class: 'act' },
+          el('a', { class: 'btn small', href: view, text: 'View' }),
+          el('button', { type: 'button', class: 'btn small ghost', text: 'Download Excel', on: { click: function (e) {
+            var b = e.currentTarget; b.disabled = true;
+            Api.rpc('projects_note_get', { p_id: n.id }).then(function (t) {
+              var name = t.columns.length === 1 ? t.columns[0] : data.name + ' - ' + t.columns.length + ' units';
+              PRXlsx.save(DSXlsx.build({ columns: t.columns, rows: t.rows }, 'Datasheet Notes'), name + ' - Datasheet Notes.xlsx');
+              Core.toast('Excel downloaded', 'success');
+            }).catch(Core.showError).then(function () { b.disabled = false; });
+          } } }),
+          canEdit ? el('button', { type: 'button', class: 'btn small danger', text: 'Remove', on: { click: function () {
+            Core.confirm('This cannot be undone. Read the datasheet again to get the table back.', { ok: 'Remove', danger: true }).then(function (yes) {
+              if (!yes) return;
+              return Api.rpc('projects_note_delete', { p_id: n.id }).then(function () { Core.toast('Table removed', 'success'); load(); });
+            }).catch(Core.showError);
+          } } }) : null));
     }
 
     function show() {
@@ -82,7 +107,13 @@
       tiles.appendChild(toolTile('1. Read a datasheet (optional)', 'Datasheet PDF in, one column per unit. Read it first: the specification is then filled from it.', 'notes', notes.length, 'datasheet table', 'datasheet tables', 'datasheet'));
       tiles.appendChild(toolTile('2. Add a specification', 'PDF or pasted text in, clauses ready to fill.', 'check', runs.length, 'specification', 'specifications', 'spec'));
 
-      emptyState($('#notes'), 'No datasheet yet', 'Read the selection datasheet: one column per unit, and its values show beside the clauses that ask about them.', 'Read a datasheet', 'datasheet');
+      if (!notes.length) emptyState($('#notes'), 'No datasheet yet', 'Read the selection datasheet: one column per unit, and its values show beside the clauses that ask about them.', 'Read a datasheet', 'datasheet');
+      else {
+        var tbody = el('tbody'); notes.forEach(function (n) { tbody.appendChild(noteRow(n)); });
+        Core.clear($('#notes')).appendChild(el('div', { class: 'table-wrap' }, el('table', { class: 'pr-table pr-notes' },
+          el('thead', null, el('tr', null, el('th', { text: 'Datasheet' }), el('th', { text: 'Product' }), el('th', { text: 'Size' }), el('th', { text: 'By' }), el('th'))), tbody)));
+        if (canEdit) $('#notes').appendChild(el('p', null, el('button', { type: 'button', class: 'btn small', text: 'Read another datasheet', on: { click: function () { go('datasheet'); } } })));
+      }
       emptyState($('#runs'), 'No specification yet', 'Add the PDF or paste the text: the clauses come ready to answer, with what the library already knows.', 'Add a specification', 'spec');
 
       var facts = el('dl', { class: 'pr-facts' });

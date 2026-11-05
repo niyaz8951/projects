@@ -1,4 +1,4 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 004. Rolled back.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 005. Rolled back.
 -- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
 -- demo_user with 'edit') and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
@@ -39,7 +39,7 @@ end $$;
 grant execute on function pg_temp.act_as(text), pg_temp.expect_error(text, text) to public;
 
 do $$
-declare v jsonb; n int; v_id uuid; v_code text; v_year text := to_char(now(), 'YYYY');
+declare v jsonb; n int; v_id uuid; v_note uuid; v_code text; v_year text := to_char(now(), 'YYYY');
 begin
   -- signed out: nothing
   perform pg_temp.act_as(null);
@@ -124,6 +124,104 @@ begin
   select public.projects_create('Third Sample', 'Contractor', 'Sample Builders', 'Oman') into v;
   select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'other user sees own'; end if;
   if (select bool_or(sees_all) from public.projects_list(null, null, null)) then raise exception 'user sees_all'; end if;
+  reset role;
+
+  -- datasheets (005): row mapping, Product Options collection, tables saved in a project (invented values)
+  perform pg_temp.act_as('demo_user');
+  select public.projects_dn_rules('ahu') into v;
+  if not (v ->> 'show_unmapped')::boolean or jsonb_array_length(v -> 'rules') <> 0 then raise exception 'dn_rules empty: %', v; end if;
+  perform pg_temp.expect_error('select public.projects_dn_rules(''boiler'')', 'INVALID:product_id');
+  select public.projects_dn_add_rows('ahu', '[{"key":"unit data||panel","section":"Unit Data","sub":"","component":"Panel"},
+    {"key":"unit data||panel","section":"Unit Data","sub":"","component":"Panel"},
+    {"key":"general||power supply","section":"General","sub":"","component":"Power Supply"},
+    {"key":"filter supply||filter class","section":"Filter Supply","sub":"","component":"Filter Class"},
+    {"key":"made up||row","section":"Made Up","sub":"","component":"Row"}]'::jsonb) into v;
+  if (v ->> 'added')::int <> 4 then raise exception 'dn_add_rows added: %', v; end if;
+  select public.projects_dn_add_rows('ahu', '[{"key":"unit data||panel","section":"Unit Data","sub":"","component":"Panel"}]'::jsonb) into v;
+  if (v ->> 'added')::int <> 0 then raise exception 'dn_add_rows again'; end if;
+  select public.projects_dn_rules('ahu') into v;
+  if jsonb_array_length(v -> 'rules') <> 4 then raise exception 'dn_rules count'; end if;
+  if (select x ->> 'strip' from jsonb_array_elements(v -> 'rules') x where x ->> 'key' = 'general||power supply') <> '+ PE' then raise exception 'starter strip'; end if;
+  if (select x ->> 'keywords' from jsonb_array_elements(v -> 'rules') x where x ->> 'key' = 'unit data||panel') not like 'double wall;%' then raise exception 'starter keywords'; end if;
+  if (select x ->> 'keywords' from jsonb_array_elements(v -> 'rules') x where x ->> 'key' = 'made up||row') <> '' then raise exception 'no starter for unknown row'; end if;
+  if not (select bool_and((x ->> 'new')::boolean) from jsonb_array_elements(v -> 'rules') x) then raise exception 'new rows marked new'; end if;
+  perform pg_temp.expect_error('select public.projects_dn_add_rows(''ahu'', ''{}''::jsonb)', 'INVALID:rows');
+
+  select public.projects_po_collect('ahu', '[
+    {"factory":"riyadh","key":"unit data||panel","value":"62 mm","model":"","grp":""},
+    {"factory":"Riyadh","key":"unit data||panel","value":"62 mm","model":"","grp":""},
+    {"factory":"Riyadh","key":"unit data||panel","value":"50 mm","model":"","grp":""},
+    {"factory":"Riyadh","key":"filter supply||filter class","value":"ISO Coarse 60%(G4)","model":"","grp":"Filter Class: ISO Coarse 60%(G4)"},
+    {"factory":"Riyadh","key":"filter supply||dimensions","value":"2x(592x592x48) 1x(287x592x48)","model":"","grp":"Filter Class: ISO Coarse 60%(G4)"},
+    {"factory":"Riyadh","key":"general||project","value":"Sample Tower","model":"","grp":""},
+    {"factory":"Riyadh","key":"made up||unseen","value":"x","model":"","grp":""},
+    {"factory":"Shenzhen","key":"unit data||panel","value":"62 mm","model":"","grp":""}]'::jsonb) into v;
+  if (v ->> 'saved')::int <> 3 then raise exception 'po_collect saved: %', v; end if;   -- panel 62, panel 50, filter class (dimensions row is not in the mapping)
+  reset role;   -- the table itself is read as the owner: no page can
+  if (select count(*) from projects.po_values) <> 3 then raise exception 'po_values rows'; end if;
+  if (select times from projects.po_values where row_key = 'unit data||panel' and value_key = '62 mm') <> 2 then raise exception 'po_collect times'; end if;
+  if (select bool_or(approved) from projects.po_values) then raise exception 'po_collect must not approve'; end if;
+  perform pg_temp.act_as('demo_user');
+  select public.projects_dn_add_rows('ahu', '[{"key":"filter supply||dimensions","section":"Filter Supply","sub":"","component":"Dimensions"}]'::jsonb) into v;
+  select public.projects_po_collect('ahu', '[
+    {"factory":"Riyadh","key":"unit data||panel","value":"62 mm","model":"","grp":""},
+    {"factory":"Riyadh","key":"filter supply||dimensions","value":"2x(592x592x48) 1x(287x592x48)","model":"","grp":"Filter Class: ISO Coarse 60%(G4)"}]'::jsonb) into v;
+  reset role;
+  if (select times from projects.po_values where row_key = 'unit data||panel' and value_key = '62 mm') <> 3 then raise exception 'po_collect times again'; end if;
+  if (select count(*) from projects.po_values where row_key = 'filter supply||dimensions') <> 2 then raise exception 'po_pieces'; end if;
+  if (select string_agg(value, ',' order by value) from projects.po_values where row_key = 'filter supply||dimensions') <> '287x592x48,592x592x48' then raise exception 'po_pieces values'; end if;
+  perform pg_temp.act_as('demo_user');
+  perform pg_temp.expect_error('select public.projects_po_collect(''ahu'', ''"x"''::jsonb)', 'INVALID:items');
+
+  select public.projects_note_save(v_id, 'ahu', 'sample-a.pdf', '["AHU-01","AHU-02"]'::jsonb,
+    '[{"section":"General","component":"Power Supply","cells":["400 V / 3 / 50 Hz","400 V / 3 / 50 Hz"],"kind":"row","key":"general||power supply"},
+      {"section":"","component":"Panel","cells":["62 mm","50 mm"],"marks":[0,1],"kind":"row","key":"unit data||panel"}]'::jsonb, 'Riyadh') into v;
+  if (v ->> 'replaced')::int <> 0 or (v ->> 'factory_id') <> 'ahu-riyadh' then raise exception 'note_save: %', v; end if;
+  select public.projects_note_save(v_id, 'ahu', 'sample-b.pdf', '["AHU-03"]'::jsonb,
+    '[{"section":"General","component":"Power Supply","cells":["400 V / 3 / 50 Hz"],"kind":"row","key":"general||power supply"}]'::jsonb, 'Nowhere') into v;
+  if (v ->> 'replaced')::int <> 0 or (v ->> 'factory_id') <> '' then raise exception 'note_save unknown factory: %', v; end if;
+  select public.projects_get(v_id) into v;
+  if jsonb_array_length(v -> 'notes') <> 2
+     or (select x ->> 'units' from jsonb_array_elements(v -> 'notes') x where x ->> 'file_names' = 'sample-b.pdf') <> '1'
+     or (select x ->> 'factory' from jsonb_array_elements(v -> 'notes') x where x ->> 'file_names' = 'sample-a.pdf') <> 'Riyadh' then raise exception 'get notes: %', v -> 'notes'; end if;
+  if (v -> 'events' -> 0 ->> 'action') <> 'datasheet notes saved' then raise exception 'note event'; end if;
+  -- read again with every unit of the first table (plus one): it replaces the first, not the second
+  select public.projects_note_save(v_id, 'ahu', 'sample-a2.pdf', '["AHU-01","AHU-02","AHU-04"]'::jsonb,
+    '[{"section":"General","component":"Power Supply","cells":["a","b","c"],"kind":"row","key":"general||power supply"}]'::jsonb, '') into v;
+  if (v ->> 'replaced')::int <> 1 then raise exception 'note_save replaces: %', v; end if;
+  select public.projects_get(v_id) into v;
+  if jsonb_array_length(v -> 'notes') <> 2 or (v -> 'events' -> 0 ->> 'action') <> 'datasheet notes replaced' then raise exception 'replace event'; end if;
+  select max(notes) into n from public.projects_list(v_code, null, null); if n <> 2 then raise exception 'list notes count'; end if;
+  v_note := (select (x ->> 'id')::uuid from jsonb_array_elements(v -> 'notes') x where x ->> 'file_names' = 'sample-a2.pdf');
+  select public.projects_note_get(v_note) into v;
+  if (v ->> 'project') <> 'Sample Tower C' or (v ->> 'product') <> 'AHU' or jsonb_array_length(v -> 'columns') <> 3 or jsonb_array_length(v -> 'rows') <> 1 then raise exception 'note_get: %', v; end if;
+  perform pg_temp.expect_error(format('select public.projects_note_get(%L)', gen_random_uuid()), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''[]''::jsonb, ''[{}]''::jsonb, '''')', v_id), 'INVALID:columns');
+  perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''["A"]''::jsonb, ''[]''::jsonb, '''')', v_id), 'INVALID:rows');
+  perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''boat'', ''x'', ''["A"]''::jsonb, ''[{}]''::jsonb, '''')', v_id), 'INVALID:product_id');
+  perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''["A"]''::jsonb, ''[{}]''::jsonb, '''')', gen_random_uuid()), 'NOT_FOUND');
+  reset role;
+  -- another user (demo_none has the tile and 'edit' since the block above): the table is NOT_FOUND to read, save into or delete
+  perform pg_temp.act_as('demo_none');
+  perform pg_temp.expect_error(format('select public.projects_note_get(%L)', v_note), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.projects_note_delete(%L)', v_note), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''["A"]''::jsonb, ''[{}]''::jsonb, '''')', v_id), 'NOT_FOUND');
+  reset role;
+  -- a reader (no right): sees the table, cannot add rows, collect, save or delete
+  update core.tile_access set rights = '{}' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
+  perform pg_temp.act_as('demo_user');
+  select public.projects_note_get(v_note) into v; if (v ->> 'id') is null then raise exception 'reader reads own table'; end if;
+  perform pg_temp.expect_error('select public.projects_dn_add_rows(''ahu'', ''[]''::jsonb)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_collect(''ahu'', ''[]''::jsonb)', 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_note_delete(%L)', v_note), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''["A"]''::jsonb, ''[{}]''::jsonb, '''')', v_id), 'NO_RIGHT');
+  reset role;
+  update core.tile_access set rights = array['edit'] where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
+  -- the admin opens and deletes any
+  perform pg_temp.act_as('demo_admin');
+  perform public.projects_note_delete(v_note);
+  select public.projects_get(v_id) into v;
+  if jsonb_array_length(v -> 'notes') <> 1 or (v -> 'events' -> 0 ->> 'action') <> 'datasheet notes deleted' then raise exception 'note_delete'; end if;
   reset role;
 
   -- sharing (003): only a tile admin or the super user shares; a member sees, opens and edits, cannot share on

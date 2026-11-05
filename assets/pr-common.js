@@ -62,6 +62,14 @@ window.PR = (function () {
     });
   };
 
+  // A tool that comes in a later step: one sheet saying so, in the place the tool will sit.
+  PR.soon = function (title, step, text) {
+    return Core.sheet({ title: title, modal: true,
+      body: el('div', { class: 'pr-soon' }, el('p', { class: 'notice accent', text: 'Coming in step ' + step }), el('p', { text: text })),
+      actions: [{ label: 'Close', kind: 'primary', value: true }] });
+  };
+  PR.readOnly = function () { Core.toast('You can read this project; adding to it needs the edit right.'); };
+
   // Plain error state inside a host element.
   PR.errorBox = function (host, err) {
     Core.clear(host);

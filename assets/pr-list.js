@@ -11,6 +11,15 @@
     var seq = 0;
 
     $('#new').hidden = !canEdit;
+    // the knowledge base: Compliance review and Product Options, for the reviewers (tile admins and the super user; the database decides)
+    var canReview = !!(me.is_super || me.tile_admin || (me.rights || []).indexOf('review') >= 0);
+    $('#review').hidden = !canReview; $('#options').hidden = !canReview;
+    $('#review').addEventListener('click', function () {
+      PR.soon('Compliance review', 4, 'The factory library: every clause met so far with its approved answer, the users\u2019 answers waiting for review, Internal Comments, upload and download of the library. Comes in step 4, after the specification and record of step 3.');
+    });
+    $('#options').addEventListener('click', function () {
+      PR.soon('Product Options', 5, 'What each factory has offered so far, per product and factory: the values collected from every datasheet read (waiting for approval), special options, hidden values and the row mapping. Comes in step 5. The values are already being collected from the datasheets read in step 2.');
+    });
     function intro() {
       $('#intro').textContent = 'A project holds the specifications and datasheets of one job. '
         + (seesAll ? 'You see every project of the team.' : 'You see your projects and the projects shared with you.');

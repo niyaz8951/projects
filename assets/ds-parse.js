@@ -1,0 +1,612 @@
+/* ============================================================
+   Datasheet Notes - reader for the Daikin AHU technical report
+   (ASTRAWEB selection software, text-based PDF), plus the shared
+   parts every reader uses (lines, rows, keys, mapping rules, grid).
+   The FCU reader is in ds-fcu.js and registers itself in DSParse.readers.
+
+   DSParse.lines(items, pageNo)  pdf.js text items -> lines of cells
+   DSParse.parseAll(pages)       lines of every page -> [structured data, one per unit]
+                                 (picks the reader from the pages: DSParse.detect)
+   DSParse.rows(data, choice)    one unit -> every row, each with a mapping key
+   DSParse.grid(units, choice, mapping)   all units + the admin's row mapping -> the table
+                                 (one column per unit tag)
+
+   Rule: the reader adds and assumes nothing. Every value is text
+   printed on the datasheet; wording is changed only by the admin's
+   row mapping (Product Options > Row mapping). The reader rearranges
+   three things:
+   - "A • B" labels with "x • y" values become one row each
+   - two filters printed in one section are shown as Filter 1 / Filter 2
+   - the Options List lines are placed under their own section
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var SKIP = /^(Technical Report\s*•|The certified standard performances|\d+\s*\/\s*\d+$)/;
+  var TOP  = /^(EN\s*13053|Section List|Options List|Sound Report|NRVU\b.*|Electrical Power Inputs Data)$/i;
+  var NUMBERED = /^(\d+)\)\s*(.+)$/;
+  // the class tables printed before the numbered sections: "Mechanical Characteristic (EN1886)" and "EN 13053"
+  var CLASSES = /^(Mechanical Characteristic\b.*|EN\s*13053)$/i;
+  var CLASS_VALUE = /^[A-Z]{1,2}\d{1,2}(\([A-Z]\))?(\s*\/\s*[A-Z]{1,2}\d{1,2}(\([A-Z]\))?)?$/;     // D1(M), L1(M)/L1(M), TB2(M), P1, V3, H4
+  var FACTORY = { '9': 'Riyadh', '5': 'Dubai' };   // last character of the Material Name, e.g. ADN10FGW9
+  var CELL_GAP = 25;      // points between two pieces of text that makes them separate cells
+  var DOT = /\s*•\s*/;
+
+  function clean(s) { return String(s).replace(/\s+/g, ' ').trim(); }
+
+  /* A superscript is printed as its own tiny item (the "3" of m³) a little above its line, and the
+     host item carries a space where it belongs: "Air Flow(m /h)". The digit goes back into the host
+     as ² or ³ so the row reads as printed. Only one or two digits are taken; anything longer is
+     tiny print (energy label) and is left alone. */
+  var SUP = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+  function superscripts(list) {
+    var tiny = list.filter(function (it) { return it.h < 7.5 && /^\d{1,2}$/.test(it.s.trim()); });
+    if (!tiny.length) return list;
+    tiny.forEach(function (t) {
+      var host = list.filter(function (h) {
+        return h !== t && h.h >= 8 && t.y - h.y >= 2 && t.y - h.y <= 7 && t.x >= h.x && t.x <= h.x + h.w + 1;
+      })[0];
+      if (!host || !host.w) return;
+      var sup = t.s.trim().split('').map(function (d) { return SUP[d]; }).join('');
+      var at = Math.round((t.x - host.x) / host.w * host.s.length), s = host.s, i;
+      for (i = 0; i <= 2; i++) {                                   // the space left for it, if there is one
+        if (s[at - i] === ' ') { host.s = s.slice(0, at - i) + sup + s.slice(at - i + 1); t.used = true; return; }
+        if (s[at + i] === ' ') { host.s = s.slice(0, at + i) + sup + s.slice(at + i + 1); t.used = true; return; }
+      }
+      at = Math.max(0, Math.min(s.length, at));
+      host.s = s.slice(0, at) + sup + s.slice(at); t.used = true;
+    });
+    return list.filter(function (it) { return !it.used; });
+  }
+
+  /* ---- pdf.js items of one page -> lines, top to bottom ----
+     Each line: { page, y, x, h, cells, text, items }
+       cells  pieces of text separated by a gap of CELL_GAP or more (label | value for the AHU report)
+       items  every piece as printed { x, w, h, s, f } (f = font name), for readers that split by column */
+  function lines(items, pageNo) {
+    var list = items
+      .filter(function (it) { return it.str && it.str.trim(); })
+      .map(function (it) {
+        return { s: it.str, x: it.transform[4], y: it.transform[5], w: it.width || 0,
+                 h: Math.abs(it.transform[3]) || it.height || 10, f: it.fontName || '' };
+      });
+    list = superscripts(list);
+    // tiny print inside the energy label picture: the country and the site the unit was selected for ("Saudi Arabia",
+    // "JEDDAH KING ABDULAZIZ INTL"), kept apart (21 Oct 2026) and read as the unit's Location
+    var tiny = list.filter(function (it) { return it.h < 6 && /[A-Za-z]{2}/.test(it.s); })
+      .sort(function (a, b) { return b.y - a.y || a.x - b.x; }).map(function (it) { return { x: it.x, y: it.y, s: clean(it.s) }; });
+    list = list.filter(function (it) { return it.h >= 6; })
+      .sort(function (a, b) { return b.y - a.y || a.x - b.x; });
+
+    var rows = [];
+    list.forEach(function (it) {
+      var last = rows[rows.length - 1];
+      if (last && Math.abs(last.y - it.y) <= 2.5) last.items.push(it);
+      else rows.push({ y: it.y, items: [it] });
+    });
+
+    var out = rows.map(function (r) {
+      r.items.sort(function (a, b) { return a.x - b.x; });
+      var cells = [], end = null, h = 0;
+      r.items.forEach(function (it) {
+        h = Math.max(h, it.h);
+        var cur = cells[cells.length - 1];
+        if (cur && it.x - end <= CELL_GAP) cur.s += (it.x - end > 1 ? ' ' : '') + it.s;
+        else cells.push({ x: it.x, s: it.s });
+        end = it.x + it.w;
+      });
+      cells.forEach(function (c) { c.s = clean(c.s); });
+      return { page: pageNo, y: r.y, x: cells[0].x, h: h, cells: cells,
+               text: cells.map(function (c) { return c.s; }).join(' '),
+               items: r.items.map(function (it) { return { x: it.x, w: it.w, h: it.h, s: clean(it.s), f: it.f }; }) };
+    });
+    out.tiny = tiny;
+    return out;
+  }
+
+  /* ---- most common text height = body text; anything taller is a heading ---- */
+  function bodyHeight(pages) {
+    var count = {}, best = 10, n = 0;
+    pages.forEach(function (pg) { pg.forEach(function (ln) {
+      var k = Math.round(ln.h * 2) / 2; count[k] = (count[k] || 0) + 1;
+      if (count[k] > n) { n = count[k]; best = k; }
+    }); });
+    return best;
+  }
+
+  /* A class table: labels in columns (a label can run over two lines), then one line of classes under them.
+     Each class goes to the label whose column centre is nearest. "(EN13053)" is left out of the label. */
+  function classLine(s, ln) {
+    var items = ln.items.filter(function (it) { return it.s; });
+    if (!items.length) return;
+    function centre(it) { return it.x + it.w / 2; }
+    if (items.every(function (it) { return CLASS_VALUE.test(it.s); })) {
+      items.forEach(function (it) {
+        var best = null, d = Infinity;
+        s.cols.forEach(function (c) { var k = Math.abs(c.c - centre(it)); if (k < d) { d = k; best = c; } });
+        if (best && d <= 40) {
+          var label = clean(best.parts.join(' ').replace(/\(?\s*EN\s*\d{3,5}\s*\)?/gi, ' '));
+          if (label) s.rows.push({ sub: '', param: label, value: it.s, page: ln.page });
+        }
+      });
+      s.cols = [];
+      return;
+    }
+    items.forEach(function (it) {
+      var c = centre(it), col = s.cols.filter(function (x) { return Math.abs(x.c - c) <= 20; })[0];
+      if (col) col.parts.push(it.s); else s.cols.push({ c: c, parts: [it.s] });
+    });
+  }
+
+  /* The NRVU block (Regulation (EU) 1253/2014) holds figures the specs ask for: EATR and OACF, external leakage,
+     SFP internal, drive type. "Nominal NRVU Flow Rate" with "Supply" / "Return" under it -> "Nominal NRVU Flow Rate Supply".
+     "External Leakage (RU) +400Pa • -400Pa L2(R) • L2(R)" is printed as one cell: the classes are split off.
+     The manufacturer's name, serial number, instructions link and footnotes are left out. */
+  var NRVU_SKIP = /^(Manufacturer'?s Name|Serial Number|Pre-\/Dis-assembly)/i;
+  function nrvuLine(s, ln, grp) {
+    var c = ln.cells.map(function (x) { return x.s; });
+    if (!c.length || /^\*/.test(c[0])) return;
+    var label = clean(c[0].replace(/\*+$/, '')), value = c.slice(1).join(' ');
+    if (c.length === 1) {
+      var lk = /^(.+?)\s+(L\d\S*(?:\s*\u2022\s*L\d\S*)*)$/.exec(label);
+      if (lk) { label = lk[1]; value = lk[2]; }
+      else { grp.name = /^[A-Z]/.test(label) && !NRVU_SKIP.test(label) ? label : ''; return; }
+    }
+    if (NRVU_SKIP.test(label)) { grp.name = ''; return; }
+    if (grp.name && /^(Supply|Return)$/i.test(label)) label = grp.name + ' ' + label; else grp.name = '';
+    s.rows.push({ sub: '', param: label, value: value, page: ln.page });
+  }
+
+  function parse(pages) {
+    var body = bodyHeight(pages);
+    var hdr = {}, unit = { rows: [], options: [] }, sections = [], warnings = [], elec = [];
+    var mode = 'head', sec = null, sub = '', optTarget = null, grp = null;   // grp: { name, x } a label heading indented rows ("Supply")
+    var valueX = null, labelX = null, lastY = null, lastRow = null, secHeadH = null, nrvuGrp = null;
+
+    function target() { return mode === 'unit' ? unit : sec; }
+
+    pages.forEach(function (pg) {
+      lastY = null;                                  // a block carries on across a page break
+      pg.forEach(function (ln) {
+        var text = ln.text;
+        if (SKIP.test(text)) return;
+        var heading = ln.h >= body + 0.8;
+        var m = NUMBERED.exec(text);
+
+        if (/^Electrical Power Inputs Data$/i.test(text)) { mode = 'elec'; return; }
+        if (mode === 'elec') {
+          // table rows: Component | Electrical Connection | Absorbed power - current
+          if (!heading && ln.cells.length >= 2) elec.push({ component: ln.cells[0].s, connection: ln.cells[1].s, absorbed: ln.cells[2] ? ln.cells[2].s : '' });
+          if (!heading || /Component|Electrical Connection|Absorbed|Current/i.test(text)) return;
+          mode = 'skip';          // the table has ended; the heading that ends it is read as any other heading
+        }
+
+        if (heading && /^NRVU\b/i.test(text)) {    // "NRVU - Regulation (EU) No 1253/2014": read as rows (22 Oct 2026)
+          mode = 'nrvu'; nrvuGrp = { name: '' };
+          sec = { no: '', name: 'NRVU', rows: [], options: [], page: ln.page };
+          sections.push(sec);
+          return;
+        }
+        if (heading) {
+          if (/^Unit Data$/i.test(text)) { mode = 'unit'; lastRow = null; grp = null; return; }
+          if (/^Options List$/i.test(text)) { mode = 'options'; optTarget = null; return; }
+          if (mode === 'options') {
+            if (/^Unit Options$/i.test(text)) { optTarget = unit; return; }
+            if (m) {
+              optTarget = sections.filter(function (s) { return s.no === m[1]; })[0] || null;
+              if (!optTarget) warnings.push('Options for "' + text + '" have no matching section in the datasheet and were left out.');
+              else if (optTarget.name !== clean(m[2])) warnings.push('Options list names section ' + m[1] + ' "' + clean(m[2]) + '" but the section is "' + optTarget.name + '". Check these options.');
+              return;
+            }
+            mode = 'skip'; return;
+          }
+          if (CLASSES.test(text)) {
+            mode = 'classes'; lastRow = null; grp = null;
+            sec = { no: '', name: clean(text), rows: [], options: [], page: ln.page, cols: [] };
+            sections.push(sec);
+            return;
+          }
+          if (m) {
+            mode = 'section'; sub = ''; grp = null; lastRow = null; lastY = null; secHeadH = ln.h;
+            sec = { no: m[1], name: clean(m[2]), rows: [], options: [], page: ln.page };
+            sections.push(sec);
+            return;
+          }
+          if (mode === 'section') {
+            if (TOP.test(text) || (secHeadH && ln.h >= secHeadH)) { mode = 'skip'; return; }
+            sub = text; grp = null; lastY = null; lastRow = null;  // sub-heading: Damper One Supply, Geometry, Cooling, Motor Data
+            return;
+          }
+          if (mode === 'head') {
+            var pm = /^Project\s+(.+)$/.exec(text), um = /^Unit\s+(.+)$/.exec(text);
+            if (pm) hdr.project = pm[1]; else if (um) hdr.unit = um[1];
+            return;
+          }
+          mode = 'skip';
+          return;
+        }
+
+        if (mode === 'head') {
+          var c0 = ln.cells[0].s, c1 = ln.cells[1] ? ln.cells[1].s : '';
+          if (/^Technical Report$/i.test(c0) && c1) hdr.date = c1;
+          else if (/^Material Name$/i.test(c0) && c1) hdr.material = c1;
+          else if (/^Ref\.\s*/i.test(c1)) { hdr.software = c0; hdr.reference = c1.replace(/^Ref\.\s*/i, ''); }
+          return;
+        }
+
+        if (mode === 'classes') { classLine(sec, ln); return; }
+        if (mode === 'nrvu') { nrvuLine(sec, ln, nrvuGrp); return; }
+
+        if (mode === 'unit' || mode === 'section') {
+          var t = target();
+          if (ln.cells.length >= 2) {
+            // a wide empty gap after a sub-block ends it (Recirculated Air / Drain Pan after the dampers)
+            if (mode === 'section' && sub && lastY !== null && lastY - ln.y > body * 2.8) { sub = ''; grp = null; }
+            // a label printed with no value, with the rows under it set further in, heads those rows:
+            // "Supply" and "Return" under WINTER / SUMMER of a heat wheel -> "WINTER · Supply"
+            var x0 = ln.cells[0].x;
+            if (lastRow && lastRow.bare && x0 > lastRow.x + 3 && t.rows[t.rows.length - 1] === lastRow) { t.rows.pop(); grp = { name: lastRow.param, x: lastRow.x }; }
+            else if (grp && x0 <= grp.x + 3) grp = null;
+            var own = mode === 'section' ? sub : '';
+            lastRow = { sub: grp ? (own ? own + ' \u00b7 ' : '') + grp.name : own, param: ln.cells[0].s,
+                        value: ln.cells.slice(1).map(function (c) { return c.s; }).join(' '), page: ln.page };
+            t.rows.push(lastRow);
+            labelX = ln.cells[0].x; valueX = ln.cells[1].x; lastY = ln.y;
+            return;
+          }
+          var cell = ln.cells[0];
+          if (valueX !== null && cell.x >= valueX - 12) {         // value wrapped onto a second line
+            if (lastRow) { lastRow.value += ' ' + cell.s; lastY = ln.y; }
+            return;
+          }
+          if (/:$/.test(cell.s)) return;                          // group label, e.g. "Specific fan power efficiency rating:"
+          var atGroup = grp && Math.abs(cell.x - grp.x) <= 4;
+          if ((labelX !== null && Math.abs(cell.x - labelX) <= 4) || atGroup) { // label printed with no value
+            if (atGroup) grp = null;                              // the next "Return" after the "Supply" rows
+            var mine = mode === 'section' ? sub : '';
+            lastRow = { sub: grp ? (mine ? mine + ' \u00b7 ' : '') + grp.name : mine, param: cell.s, value: '', page: ln.page, bare: true, x: cell.x };
+            t.rows.push(lastRow); lastY = ln.y;
+            return;
+          }
+          // free text under a block, e.g. "Calculated in Wet Condition": kept with the block it is printed in
+          var at = mode === 'section' ? sub : '';
+          t.rows.push({ sub: grp ? (at ? at + ' \u00b7 ' : '') + grp.name : at, param: 'Note', value: cell.s, page: ln.page });
+          lastRow = null;
+          return;
+        }
+
+        if (mode === 'options' && optTarget) optTarget.options.push(text);
+      });
+    });
+
+    sections.forEach(splitFilters);
+
+    // Location = the country and the site printed small in the energy label of the unit's first page, site first
+    // ("JEDDAH KING ABDULAZIZ INTL, Saudi Arabia"); it sits before Air Density, which it decides (with Altitude)
+    var first = pages.filter(function (pg) { return pg.tiny && pg.tiny.length; })[0];
+    var at = -1;
+    unit.rows.forEach(function (r, i) { if (at < 0 && /^(Air Density|Altitude)\b/i.test(r.param)) at = i; });
+    if (first && at >= 0) {
+      // only the label's own column (same left edge as the country), at most country + site
+      var x0 = first.tiny[0].x, parts = first.tiny.filter(function (t) { return Math.abs(t.x - x0) < 2; }).slice(0, 2)
+        .map(function (t) { return t.s; });
+      var place = parts.length > 1 ? parts[1] + ', ' + parts[0] : parts[0];
+      unit.rows.splice(at, 0, { sub: '', param: 'Location', value: place, page: first.length ? first[0].page : 1 });
+      hdr.location = place;
+    }
+
+    // Power supply = the Electrical Connection printed for Fan Supply in "Electrical Power Inputs Data".
+    var fan = elec.filter(function (e) { return /^Fan Supply$/i.test(e.component); })[0] ||
+              elec.filter(function (e) { return /^Fan\b/i.test(e.component); })[0];
+    // Factory = the last character of the Material Name (owner's rule): ...9 Riyadh, ...5 Dubai.
+    var code = clean(hdr.material || '').slice(-1);
+    if (FACTORY[code]) hdr.factory = FACTORY[code];
+    else warnings.push(hdr.material ? 'The Material Name "' + hdr.material + '" does not end in ' + Object.keys(FACTORY).join(' or ') + ', so the factory is not known and the Factory row is missing.'
+                                    : 'No Material Name was found on the datasheet, so the Factory row is missing.');
+
+    if (fan) { hdr.power = fan.connection; hdr.powerFrom = fan.component; }
+    else warnings.push('No Fan Supply line was found under "Electrical Power Inputs Data", so the Power Supply row is missing.');
+    return { type: 'ahu', hdr: hdr, unit: unit, sections: sections, warnings: warnings, elec: elec };
+  }
+
+  /* ---- readers, one per product id (the id used in cm_products) ----
+     Each: { name, starts(page lines) -> true when this page starts a unit, parse(pages) -> unit data,
+             unitBlock, sectionsName (words used in notices) }.
+     The AHU reader is in this file; others register themselves (ds-fcu.js). */
+  var readers = {
+    ahu: { name: 'Daikin AHU technical report (ASTRAWEB)', unitBlock: 'Unit Data', sectionsName: 'numbered sections',
+           starts: function (pg) { return pg.some(function (ln) { return /^Unit Data$/i.test(ln.text); }); },
+           parse: parse,
+           factories: Object.keys(FACTORY).map(function (k) { return FACTORY[k]; }) }   // the factories a datasheet can name
+  };
+
+  /* Which reader a PDF needs: the first reader whose start page is found. */
+  function detect(pages) {
+    var ids = Object.keys(readers);
+    for (var i = 0; i < ids.length; i++) {
+      var r = readers[ids[i]];
+      if (r.starts && pages.some(r.starts)) return ids[i];
+    }
+    return null;
+  }
+
+  /* One PDF can hold several units, each starting on a page the reader recognises (the "Unit Data"
+     heading for an AHU, the report title for an FCU). Pages are cut into one block per unit and
+     each block is read on its own. A PDF no reader recognises is read as an AHU, which gives the
+     "nothing found" message in ds-read.js. */
+  function parseAll(pages) {
+    var id = detect(pages) || 'ahu', r = readers[id], starts = [];
+    pages.forEach(function (pg, i) { if (r.starts(pg)) starts.push(i); });
+    if (starts.length < 2) return [r.parse(pages)];
+    return starts.map(function (from, k) {
+      return r.parse(pages.slice(k === 0 ? 0 : from, k + 1 < starts.length ? starts[k + 1] : pages.length));
+    });
+  }
+
+  /* One filter section can hold two filters: a repeated "Filter Class" starts the next one. */
+  function splitFilters(s) {
+    var starts = [];
+    s.rows.forEach(function (r, i) { if (!r.sub && /^Filter Class$/i.test(r.param)) starts.push(i); });
+    if (starts.length < 2) return;
+    starts.forEach(function (from, k) {
+      var to = k + 1 < starts.length ? starts[k + 1] : s.rows.length;
+      for (var i = from; i < to; i++) if (!s.rows[i].sub) s.rows[i].sub = 'Filter ' + (k + 1);
+    });
+  }
+
+  /* "Panel • Insulation" = "62 mm • Foam"  ->  Panel: 62 mm, Insulation: Foam.
+     A short second label takes its meaning from the first one:
+     "Temp. Dry Bulb In • Out" -> "Temp. Dry Bulb In", "Temp. Dry Bulb Out". */
+  var STANDALONE = /^(Door|Altitude|Rows|Insulation)$/i;
+  function expand(param, value) {
+    var lp = param.split(DOT), vp = value.split(DOT);
+    if (lp.length < 2 || lp.length !== vp.length) return [{ param: param, value: value }];
+    var words = lp[0].split(' ');
+    return lp.map(function (l, i) {
+      var name = l;
+      // "Standard • Actual Pressure Drop": a one-word first label takes the noun of the second -> "Standard Pressure Drop"
+      var second = lp.length === 2 ? lp[1].split(' ') : [];
+      if (i === 0 && l.indexOf(' ') < 0 && second.length >= 3 && !STANDALONE.test(l)) name = l + ' ' + second.slice(1).join(' ');
+      if (i > 0 && l.indexOf(' ') < 0 && words.length > 1 && !STANDALONE.test(l)) {
+        var base = words.slice(0, -1);
+        while (base.length > 1 && /^(Diam|Dia)\.?$/i.test(base[base.length - 1])) base.pop();
+        name = base.join(' ') + ' ' + l;
+      }
+      return { param: name, value: vp[i] };
+    });
+  }
+
+  /* ---- structured data + the user's choices -> every row the datasheet gives ----
+     Each row: { group, title, sub, component, value, key }
+       group  section name without its number ("Filter Supply"); rows of every section
+              with the same name share their mapping
+       title  what is printed in the Section column ("2) Filter Supply")
+       key    what the admin's row mapping is stored under: group | sub | component.
+              "Filter 1" / "Filter 2" are left out of the key so one rule covers every filter. */
+  function norm(s) { return clean(s).toLowerCase(); }
+  function rowKey(group, sub, component) {
+    return norm(group) + '|' + (/^Filter \d+$/i.test(sub) ? '' : norm(sub)) + '|' + norm(component);
+  }
+
+  /* VRV Xpress lines of a DX coil (HILTOP, 21 Oct 2026): "1[D]* x EKEXVA250 [A]* EKEA" / "NOSUPPLIED" is the
+     expansion kit, "Total Capacity[B]*" the capacity it is chosen for; the [A]* marks point to a footnote. */
+  function vrv(param, value) {
+    if (!/\[[A-Z]\]\*/.test(param)) return { param: param, value: value };
+    var bare = clean(param.replace(/\s*\[[A-Z]\]\*\s*/g, ' '));
+    if (!/^\d+\s*x\s/i.test(bare)) return { param: bare, value: value };
+    return { param: 'VRV Expansion Kit', value: bare + (/^not? ?supplied$/i.test(clean(value || '')) ? ' (not supplied)' : (value ? ' ' + clean(value) : '')) };
+  }
+
+  function rows(data, choice) {
+    var out = [], count = {};
+    function push(group, title, nth, sub, component, value) {
+      out.push({ group: group, title: title, nth: nth, sub: sub, component: component, value: value, key: rowKey(group, sub, component) });
+    }
+    function body(group, title, nth, t) {
+      var subs = [];
+      function add(r) { var x = vrv(r.param, r.value); expand(x.param, x.value).forEach(function (e) { push(group, title, nth, r.sub, e.param, e.value); }); }
+      t.rows.forEach(function (r) { if (!r.sub) add(r); else if (subs.indexOf(r.sub) < 0) subs.push(r.sub); });
+      subs.forEach(function (s) { t.rows.forEach(function (r) { if (r.sub === s) add(r); }); });
+      t.options.forEach(function (o) { push(group, title, nth, 'Options', 'Option', o); });
+    }
+
+    // The unit tag is the heading of the unit's column, so there is no "Unit" row.
+    var h = data.hdr;
+    function g(label, v) { if (v) push('General', 'General', 1, '', label, v); }
+    g('Factory', h.factory); g('Product', choice && choice.product); g('Power Supply', h.power);
+    g('Project', h.project); g('Reference', h.reference);
+    g('Material Name', h.material); g('Selection Software', h.software); g('Report Date', h.date);
+    body('Unit Data', 'Unit Data', 1, data.unit);
+    data.sections.forEach(function (s) {
+      count[s.name] = (count[s.name] || 0) + 1;          // 2nd, 3rd ... section with the same name in this unit
+      body(s.name, s.no ? s.no + ') ' + s.name : s.name, count[s.name], s);   // FCU sections carry no number
+    });
+    // "Electrical Power Inputs Data": per motor its connection and the absorbed power and current ("3.0kW - 6.1A")
+    var EL = 'Electrical Power Inputs';
+    (data.elec || []).forEach(function (e) {
+      var m = /^\s*([\d.]+)\s*kW\s*-\s*([\d.]+)\s*A\s*$/i.exec(e.absorbed || '');
+      if (e.connection) push(EL, EL, 1, e.component, 'Electrical Connection', e.connection);
+      if (m) { push(EL, EL, 1, e.component, 'Absorbed Power', m[1] + ' kW'); push(EL, EL, 1, e.component, 'Absorbed Current', m[2] + ' A'); }
+      else if (e.absorbed) push(EL, EL, 1, e.component, 'Absorbed Power - Current', e.absorbed);
+    });
+    return out;
+  }
+
+  /* An admin response: empty = the datasheet value, plain text = a standard response,
+     $ or * inside the text = the place where the datasheet value goes. */
+  function fill(response, value, strip) {
+    var v = remove(value, strip), r = clean(response || '');
+    if (!r) return v;
+    return r.replace(/[$*]/g, function () { return v; });
+  }
+
+  /* "Remove from value": text the admin wants taken out of the datasheet value before it is used,
+     e.g. "+ PE" turns "380V/3Ph/60Hz + PE" into "380V/3Ph/60Hz". Several texts are separated by ";".
+     Upper and lower case are treated the same. */
+  function remove(value, strip) {
+    var v = String(value == null ? '' : value);
+    String(strip || '').split(';').forEach(function (part) {
+      part = clean(part);
+      if (!part) return;
+      var re = new RegExp(part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s*'), 'gi');
+      v = v.replace(re, ' ');
+    });
+    return clean(v);
+  }
+
+  /* ---- every unit + the admin's mapping -> the table that is shown and exported ----
+     units:   [data, ...] from parseAll()
+     mapping: { showUnmapped: true|false, rules: { key: { show, label, strip, response } } }
+     Out: { columns: [unit tag, ...], rows: [{ section, component, cells: [one per unit], marks, kind }] }
+       marks: per cell, 0 = same as the first unit, 1, 2 ... = 1st, 2nd ... different value (see marks()).
+       kind = 'row' | 'sub'. section is filled on the first row of a section only. A sub-heading
+       is written only when at least one of its rows is shown.
+
+     One unit: the Section column shows the datasheet's own heading ("2) Filter Supply").
+     Several units: section numbers differ from unit to unit, so rows are lined up by section
+     NAME (2nd, 3rd section of the same name as "Filter Supply (2)" ...), sub-heading and
+     component. Option lines are lined up by their text. A unit that does not have a row
+     gets "-" in its cell. */
+  var MISSING = '-';
+
+  /* The first unit is the reference. For one row: 0 = same as the first unit, 1 = the first
+     different value, 2 = the next different value ... so equal deviations share a number
+     (and a colour). Compared as printed in the table, ignoring case and spacing. */
+  function marks(cells) {
+    var seen = [norm(cells[0])];
+    return cells.map(function (c) {
+      var k = norm(c), i = seen.indexOf(k);
+      if (i < 0) { seen.push(k); i = seen.length - 1; }
+      return i;
+    });
+  }
+  function optionId(text) { return norm(text).replace(/^\d+\s*x\s+/, ''); }
+
+  function tags(units) {
+    var seen = {};
+    return units.map(function (u, i) {
+      var t = clean(u.hdr.unit || '') || 'Unit ' + (i + 1);
+      seen[t] = (seen[t] || 0) + 1;
+      return seen[t] > 1 ? t + ' (' + seen[t] + ')' : t;
+    });
+  }
+
+  function grid(units, choice, mapping) {
+    var rules = (mapping && mapping.rules) || {}, unmapped = !mapping || mapping.showUnmapped !== false;
+    var many = units.length > 1, merged = [], byId = {};
+
+    units.forEach(function (data, u) {
+      var pos = -1, dup = {};
+      rows(data, choice).forEach(function (r) {
+        var id = norm(r.group) + '#' + r.nth + '|' + norm(r.sub) + '|';
+        if (r.sub === 'Options') id += optionId(r.value);
+        else { id += norm(r.component); dup[id] = (dup[id] || 0) + 1; if (dup[id] > 1) id += '#' + dup[id]; }
+        var m = byId[id];
+        if (m) pos = Math.max(pos, merged.indexOf(m));
+        else {
+          m = byId[id] = { key: r.key, sub: r.sub, component: r.component, values: [],
+                           title: many ? r.group + (r.nth > 1 ? ' (' + r.nth + ')' : '') : r.title };
+          merged.splice(++pos, 0, m);                      // a row only a later unit has goes after the row before it
+        }
+        m.values[u] = r.value;
+      });
+    });
+
+    var out = [], title = null, sub = '', blank = units.map(function () { return ''; });
+    merged.forEach(function (m) {
+      var rule = rules[m.key];
+      if (rule ? rule.show === false : !unmapped) return;
+      var first = m.title !== title;
+      if (first) { title = m.title; sub = ''; }
+      if (m.sub !== sub) {
+        sub = m.sub;
+        if (sub) { out.push({ section: first ? title : '', component: sub, cells: blank, kind: 'sub' }); first = false; }
+      }
+      var cells = units.map(function (x, u) { return m.values[u] === undefined ? MISSING : fill(rule && rule.response, m.values[u], rule && rule.strip); });
+      out.push({ section: first ? title : '', component: (rule && clean(rule.label || '')) || m.component, kind: 'row',
+                 cells: cells, marks: marks(cells), key: m.key });
+    });
+    return { columns: tags(units), rows: out };
+  }
+
+  /* Product Options cards (owner, 21 Oct 2026; docs/Product-Options-Redesign.md). Each card gathers the datasheet
+     sections of one kind of component (supply and return together) and, when it has a column row, saves the values
+     of each component with the column they belong to, as one group of Product Options ("Filter Class: ePM1 65%(F7)",
+     "EC Fans · Model: K3G450PA3103", "Model Box Ref.: Energy ThermiC° S2"). Product Options then shows one column
+     per group, puts what is the same in every column on top ("common") and shows duty figures as ranges.
+       sections  the datasheet sections of the card (section name without its number, lower case)
+       column    the row whose value names the column; label: the name used in the group instead of the row's own
+       scope     where the column row is read: 'unit' (anywhere in the unit), 'item' (the numbered item, "Filter 1",
+                 else the section), default the section
+       shared    rows of the section that belong to every column (never grouped)
+       family    fans: the row that gives the family (EC, DIDW), put before the column: "EC Fans · Model: ..."
+       members   Product Options shows only these rows per column by default (the others in General); every row is
+                 still saved with its column, so an editor can move a row (dn_map.place, owner 21 Oct 2026)
+       general   Product Options shows the card's rows in General by default (heat recovery, humidifiers)
+       bySection coils: one column per section kind (cooling DX, cooling water), no group needed
+     A section no card names is a card of its own, supply and return together. */
+  var PO_CARDS = [
+    { id: 'power', name: 'Power supply', sections: /^general$/ },
+    // owner, 21 Oct 2026: a column per model box with its panel, insulation, profile and EN 1886 classes; skins, base,
+    // roof ... are general (project choices, not part of the model box)
+    { id: 'casing', name: 'Casing', sections: /^(unit data|mechanical characteristic \(en ?1886\)|en ?13053)$/, column: /^model box ref\.?$/i, scope: 'unit',
+      members: /^unit data\|\|(model box ref\.?|panel|insulation|profile)$|^mechanical characteristic \(en ?1886\)\|/ },
+    { id: 'dampers', name: 'Dampers', sections: /^(damper\b|mixing box\b)/ },
+    { id: 'filters', name: 'Filters', sections: /^filter\b/, column: /^filter class$/i, scope: 'item', shared: /^(mounting|air velocity|pressure drop design)$/i },
+    { id: 'recovery', name: 'Heat recovery', sections: /heat wheel|recuperator|heat recovery|plate exchanger/, column: /^part number$/i, general: true },
+    { id: 'coils', name: 'Coils', sections: /^coil\b/, bySection: true },
+    { id: 'humidifiers', name: 'Humidifiers', sections: /humidifier/, column: /^name$/i, label: 'Model', general: true },
+    { id: 'heaters', name: 'Electric heaters', sections: /electric heater/ },
+    { id: 'fans', name: 'Fans', sections: /^(fan\b.*|.*\bfan)$/, column: /^(fan )?(model|size)$/i, family: /^(fan )?type$/i },
+    { id: 'empty', name: 'Empty sections', sections: /^empty section/ }
+  ];
+  var SIDE = /\s+(supply|return|exhaust|extract|fresh air|outdoor|recirculation)$/i;
+  function poCard(section) {
+    var k = clean(section).toLowerCase();
+    for (var i = 0; i < PO_CARDS.length; i++) if (PO_CARDS[i].sections.test(k)) return PO_CARDS[i];
+    var base = clean(section).replace(SIDE, '');
+    return { id: 'x:' + base.toLowerCase(), name: base || 'Other' };
+  }
+  /* fans: EC when the type says EC; DIDW for centrifugal forward / backward blades (owner, 21 Oct 2026) */
+  function fanFamily(type) {
+    if (/\bEC\b/i.test(type)) return 'EC Fans';
+    if (/centrifugal|backward|forward|didw/i.test(type)) return 'DIDW Fans';
+    return 'Other Fans';
+  }
+  var GROUP_HEAD = /^(?:(EC|DIDW|Other) Fans · )?([^:]+): (.+)$/;
+  /* "EC Fans · Model: K3G450PA3103" -> { family: "EC Fans", label: "Model", value: "K3G450PA3103" } */
+  function poGroupParts(g) {
+    var m = GROUP_HEAD.exec(g || '');
+    return m ? { family: m[1] ? m[1] + ' Fans' : '', label: m[2], value: m[3] } : null;
+  }
+  /* rows = DSParse.rows of one unit, value(r) = the value as saved; returns the group of each row ('' = none) */
+  function poGroups(rows, value) {
+    var heads = {}, fam = {}, out = [];
+    function parts(r) { return r.key.split('|'); }
+    function scope(r, C) {
+      if (C.scope === 'unit') return C.id;
+      return C.id + '|' + r.group + '|' + r.nth + (C.scope === 'item' && /\s\d+$/.test(r.sub) ? '|' + r.sub : '');
+    }
+    function grouped(r, C) {
+      var p = parts(r);
+      if (!C.column || p[1] === 'options' || p[2] === 'note') return false;
+      return !(C.shared && !r.sub && C.shared.test(r.component));
+    }
+    rows.forEach(function (r) {
+      var C = poCard(parts(r)[0]), v = value(r);
+      if (!C.column || !v || v === '-') return;
+      var sc = scope(r, C);
+      if (C.column.test(r.component) && !heads[sc]) heads[sc] = (C.label || r.component) + ': ' + (C.id === 'humidifiers' ? v.replace(/^\d+\s*x\s*/i, '') : v);
+      if (C.family && C.family.test(r.component) && !fam[sc]) fam[sc] = fanFamily(v);
+    });
+    rows.forEach(function (r, i) {
+      var C = poCard(parts(r)[0]), sc = C.column ? scope(r, C) : '';
+      out[i] = sc && heads[sc] && grouped(r, C) ? (C.family ? (fam[sc] || 'Other Fans') + ' · ' : '') + heads[sc] : '';
+    });
+    return out;
+  }
+
+  window.DSParse = { readers: readers, detect: detect, clean: clean, lines: lines, parse: parse, parseAll: parseAll,
+                     rows: rows, grid: grid, fill: fill, expand: expand, rowKey: rowKey,
+                     PO_CARDS: PO_CARDS, poCard: poCard, poGroups: poGroups, poGroupParts: poGroupParts, fanFamily: fanFamily };
+})();

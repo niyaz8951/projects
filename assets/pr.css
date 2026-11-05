@@ -88,3 +88,62 @@
 }
 .pr-next .section-title { margin-bottom: 0; }
 .pr-filters[hidden] { display: none; }
+
+/* register: the knowledge-base buttons beside New project (reviewers only) */
+.pr-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+.btn.pr-kb { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.btn.pr-kb:hover { background: var(--accent); color: var(--on-accent); }
+.btn.pr-kb .ico { background: currentColor; }
+
+/* datasheet reader */
+.pr-filters.pr-one { grid-template-columns: minmax(200px, 420px); }
+.pr-filters.pr-two { grid-template-columns: minmax(200px, 2fr) minmax(200px, 1fr); }
+.dn-drop { display: block; width: 100%; padding: 30px 16px; text-align: center; cursor: pointer; font: inherit; color: var(--text);
+  background: var(--surface-2); border: 1.5px dashed var(--line-strong); border-radius: var(--radius); transition: border-color .15s, background .15s; }
+.dn-drop:hover, .dn-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.dn-drop:disabled { opacity: .6; cursor: progress; }
+.dn-drop strong { display: block; font-size: 1rem; }
+.dn-drop span { display: block; margin-top: 4px; font-size: 0.88rem; color: var(--text-2); }
+.dn-run { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-3); }
+.dn-run .notice { flex: 1 1 240px; margin: 0; }
+.dn-run .notice[hidden] { display: none; }
+#dn-map-note, #dn-warn, #dn-failed, #dn-saved { margin-top: var(--space-3); }
+.dn-list { margin: 6px 0 0; padding-left: 18px; }
+.dn-diff { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-3); }
+.dn-diff p { flex: 1 1 320px; margin: 0; }
+.chips#dn-facts, .chips#facts { margin-top: var(--space-3); }
+/* the table: Section and Component stay in view when a wide table is scrolled sideways (--dn-c1 = the Section width) */
+.dn-preview { max-height: 70vh; overflow: auto; margin-top: var(--space-3); }
+.dn-preview table { table-layout: fixed; min-width: 640px; }
+.dn-preview th { position: sticky; top: 0; z-index: 2; background: var(--surface-2); }
+.dn-preview th:nth-child(-n+2), .dn-preview td:nth-child(-n+2) { position: sticky; left: 0; }
+.dn-preview th:nth-child(2), .dn-preview td:nth-child(2) { left: var(--dn-c1, 170px); box-shadow: inset -1px 0 0 var(--line); }
+.dn-preview th:nth-child(-n+2) { z-index: 3; }
+.dn-preview td:nth-child(-n+2) { z-index: 1; background: var(--surface); }
+.dn-preview td { vertical-align: top; overflow-wrap: anywhere; padding: 8px 12px; }
+.dn-preview th.unit { text-transform: none; letter-spacing: 0; font-size: 0.9rem; color: var(--text); white-space: normal; overflow-wrap: anywhere; }
+.dn-preview td.sec { font-weight: 650; }
+.dn-preview tr.first td { border-top: 2px solid var(--line-strong); }
+.dn-preview tr.sub td { background: var(--surface-2); font-weight: 650; }
+/* cells that differ from the first unit: one soft tone per different value, all from the theme tokens */
+.dn-preview td.diff { font-weight: 600; }
+.dn-preview td.d1 { background: var(--warning-soft); }
+.dn-preview td.d2 { background: var(--accent-soft); }
+.dn-preview td.d3 { background: var(--success-soft); }
+.dn-preview td.d4 { background: var(--danger-soft); }
+.dn-preview td.d5 { background: var(--brand-soft); }
+@media (max-width: 560px) {
+  .dn-preview th:nth-child(-n+2), .dn-preview td:nth-child(-n+2) { padding-left: 8px; padding-right: 6px; font-size: 0.8rem; }
+}
+/* the project's datasheet tables */
+.pr-notes .act { text-align: right; white-space: nowrap; }
+.pr-notes .act .btn + .btn { margin-left: 6px; }
+.pr-notes tbody tr { cursor: default; }
+.pr-notes tbody tr:hover td { background: transparent; }
+.pr-notes a.name { font-weight: 600; }
+@media (max-width: 640px) {
+  .pr-filters.pr-one, .pr-filters.pr-two { grid-template-columns: 1fr; }
+  .pr-actions { width: 100%; justify-content: flex-start; }
+  .pr-notes .act { display: flex; flex-wrap: wrap; gap: 8px; text-align: left; white-space: normal; padding-top: 10px; }
+  .pr-notes .act .btn + .btn { margin-left: 0; }
+}
