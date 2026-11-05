@@ -126,7 +126,11 @@
             table.push(Object.assign({}, base, one));
           });
         });
-        return { product: product, factory: factory, columns: columns, table: table, runs: runs, notes: notes, hasNotes: tables.length > 0, rules: rules, byVocab: !!byVocab,
+        // what the datasheets say, as one text in small letters (sections, sub-headings, rows, values): the "Not
+        // Applicable?" hints look in it for what the unit has (pr-hints.js)
+        var sheetText = tables.map(function (n) { return (n.rows || []).map(function (r) { return [r.section, r.component].concat(r.cells || []).join(' '); }).join(' '); }).join(' ')
+          .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        return { product: product, factory: factory, columns: columns, table: table, runs: runs, notes: notes, hasNotes: tables.length > 0, rules: rules, byVocab: !!byVocab, sheetText: sheetText,
                  keyed: rules.filter(function (r) { return r.show !== false && String(r.keywords || '').trim(); }).length };
       });
     });

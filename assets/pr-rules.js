@@ -31,7 +31,14 @@
     choose_listed: 'Values named in a "choose:" chip',
     vocab_products: 'Match this product by its vocabulary',
     vocab_fallback: 'Keywords where the vocabulary finds nothing',
-    vocab_types: 'Requirement types per clause, at most'
+    vocab_types: 'Requirement types per clause, at most',
+    hint_scope: 'Hint "In Contractor\'s Scope?"',
+    hint_absent: 'Hint "Not Applicable?"',
+    scope_parts: 'Parts that are the contractor\'s work',
+    scope_words: 'Words that put a clause in the contractor\'s scope',
+    scope_sections: 'Section titles that are the contractor\'s work',
+    scope_manufacturer: 'Words of the manufacturer\'s own work',
+    absent_rules: 'Not in this unit: the rules'
   };
   var HELP = {
     topics: 'The topic gate. A clause about one part of the unit (its label or the heading above it names filters, fans, a VFD ...) only takes datasheet rows of that part. A clause or a row with no topic is not gated. Order matters: a text takes the first topic it names, so put the specific ones (VFD, heat pipe) above the wide ones (fan, coil). Words are whole words; "*" at the end of a word means any ending (humidif* finds humidifier and humidification); write a plural as its own word.',
@@ -51,13 +58,21 @@
     choose_listed: 'In "choose: ..." and "none of the values seen meets ...", the rest as "and n more".',
     vocab_products: 'Off: every datasheet row is found by its Spec keywords, as before. On: a row that a verified type of the vocabulary points at (Row:) is found by the vocabulary - what the clause asks, by its landmarks; a "#2" row (Filter 2) gets only the clauses about it. Rows no verified type points at keep their Spec keywords. Only verified items are read.',
     vocab_fallback: 'For a row the vocabulary covers but finds no clause for in this specification: on, its Spec keywords are used instead (you never see fewer rows than with keywords); off, the row stays empty (no keyword guesses for rows the vocabulary covers).',
+    hint_scope: 'Under a clause that is the contractor\'s work, a dotted hint "In Contractor\'s Scope?" with the reason. The compliance is answered as the manufacturer (AHU, FCU or chiller maker) for the contractor and the consultant. In Edit a press on the hint answers the clause; nothing is ever filled by itself.',
+    hint_absent: 'Under a clause that asks for something the unit has not (no humidifier, no heater, belts with EC direct-drive fans ...), a dotted hint "Not Applicable?" with the reason. Only when the project holds a datasheet of the product: the datasheet is the proof.',
+    scope_parts: 'Every clause of these Parts gets the hint (Part 3, Execution: installation, connections, field tests, cleaning), unless the clause or its section names the manufacturer\'s own work (below). Leave it empty to hint by words and section titles only.',
+    scope_words: 'A clause holding one of these gets the hint in any Part, even beside the manufacturer\'s words ("Fan drives shall be factory mounted with belt adjustment by the Contractor"). Whole words; "*" at the end of a word means any ending; punctuation counts as a space ("Contractor\'s" is "contractor s").',
+    scope_sections: 'Every clause of a section whose title holds one of these gets the hint (1.6 Coordination, 3.2 Installation ...), unless the clause or the section names the manufacturer\'s own work.',
+    scope_manufacturer: 'The manufacturer\'s own work in Part 3 and in contractor sections: field service, start-up, training, factory tests. A clause or section title with one of these gets no Part or section hint (a scope word above still counts).',
+    absent_rules: 'Each rule: the words in the clause (or in the heading above it) that ask for a part of the unit, and what the project\'s datasheet must show for the hint - one of "has" (if any listed) and none of "lacks". The first rule that fits gives the reason. Products: the products the rule is for (empty = every product).',
     vocab_types: 'A long clause asks several things ("50 mm thick, galvanized, steel frame, hinged doors"). The record reads up to this many requirement types in one clause, best first, counting only types that point at a datasheet row; types scoring below 60% of the best are dropped. Try a clause lists every type it recognises.'
   };
   var UNITS = { vocab_types: 'types', near_words: 'words', max_clauses: 'clauses', keep_share: '% of the best', heading_words: 'words', label_chars: 'characters', figure_words: 'words',
                 option_values: 'values', candidates_shown: 'values', choose_listed: 'values' };
   var TABS = {
     find: ['topics', 'general_topics', 'section_topics', 'parts', 'near_words', 'max_clauses', 'keep_share', 'heading_words', 'heading_verbs', 'label_chars'],
-    picks: ['properties', 'figure_words', 'option_values', 'candidates_shown', 'choose_listed']
+    picks: ['properties', 'figure_words', 'option_values', 'candidates_shown', 'choose_listed'],
+    hints: ['hint_scope', 'hint_absent', 'scope_parts', 'scope_words', 'scope_sections', 'scope_manufacturer', 'absent_rules']
   };
   var DIRECTIONS = [['higher', 'Higher is better'], ['lower', 'Lower is better'], ['exact', 'Must match']];
   var KINDS = { '': 'Any figure', length: 'Length (mm, m, in)', mass: 'Mass (kg, lb)', areal_mass: 'Mass per area (kg/m2)', density: 'Density (kg/m3)',
@@ -79,7 +94,9 @@
       'Blue chips: the project\'s datasheet value of each row the clause asks about. A unit read again is taken from the newest table only; a row printed twice (Filter 1, Filter 2) shows both, told apart by their sub-heading.',
       'Dashed chips: only for a row the project has no datasheet value for (no datasheet, or the row is not on it). Approved Product Options values only; a value waiting for approval never shows.',
       'Green: the compliance library\'s approved answer of the identical clause at the same factory, pre-filled. Identical = the same text in small letters with every run of other characters as one space; at least 8 characters. Only an answer approved in Compliance review is the library\'s.',
-      'All three show at once, under every clause, with no extra step; the legend line on the record names the three colours.'
+      'All three show at once, under every clause, with no extra step; the legend line on the record names the three colours.',
+      'Hints (013, Hints tab): a dotted "In Contractor\'s Scope?" or "Not Applicable?" with its reason, under the clauses the rules pick, while the clause has another answer. A press in Edit answers the clause and saves it as if typed; Remarks stay yours. Nothing is filled by itself; hints are not in the Excel files. The compliance is the manufacturer\'s, for the contractor and the consultant.',
+      'A mark on a blue chip (012): \u2713 meets / \u2713 better / \u2260 check / \u2717 not met - the datasheet figure or class against the clause, only where a whole keyword of the row stands near the figure.'
     ]],
     ['Product Options picks (pr-picks.js)', [
       'The value that exactly meets the clause first; else the closest value on the better side (closest higher for "minimum", closest lower for "maximum"); never a value on the worse side. Ties: the most seen value.',
@@ -161,8 +178,8 @@
     ta.value = commas(state.draft[key]);
     ta.addEventListener('input', function () {
       var list = splitList(ta.value);
-      if (key === 'parts') list = list.map(function (x) { return /^\d+$/.test(x) ? Number(x) : x; });
-      else if (lower) list = list.map(function (x) { return x.toLowerCase(); });
+      if (key === 'parts' || key === 'scope_parts') list = list.map(function (x) { return /^\d+$/.test(x) ? Number(x) : x; });
+      else if (lower) list = list.map(function (x) { return x.toLowerCase().replace(/[^a-z0-9*]+/g, ' ').trim(); }).filter(Boolean);
       setDraft(key, list);
     });
     return el('div', {}, el('label', { for: 'in-' + key, class: 'sr-only', text: TITLES[key] }), ta,
@@ -266,7 +283,60 @@
     return host;
   }
 
+  function boolEditor(key, label) {
+    var box = el('input', { type: 'checkbox', id: 'in-' + key });
+    box.checked = state.draft[key] !== false;
+    box.addEventListener('change', function () { setDraft(key, box.checked); });
+    return el('label', { class: 'check' }, box, ' ' + label);
+  }
+  // the "Not in this unit" rules: one fold per rule
+  function absentEditor() {
+    var host = el('div', { class: 'mr-list' });
+    function draw() {
+      Core.clear(host);
+      state.draft.absent_rules.forEach(function (r, i) {
+        var label = el('input', { type: 'text', value: r.label, maxlength: 120 });
+        var prods = el('input', { type: 'text', value: commas(r.products), spellcheck: 'false', placeholder: 'every product' });
+        var clause = el('textarea', { rows: 2, class: 'mr-text', spellcheck: 'false' }); clause.value = commas(r.clause);
+        var has = el('input', { type: 'text', value: commas(r.has), spellcheck: 'false', placeholder: 'nothing required' });
+        var lacks = el('input', { type: 'text', value: commas(r.lacks), spellcheck: 'false', placeholder: 'nothing excluded' });
+        var W = function (x) { return splitList(x).map(function (y) { return y.toLowerCase().replace(/[^a-z0-9*]+/g, ' ').trim(); }).filter(Boolean); };
+        function upd() {
+          var d = copy(state.draft.absent_rules);
+          d[i] = { label: label.value.trim(), products: splitList(prods.value).map(function (x) { return x.toLowerCase(); }), clause: W(clause.value), has: W(has.value), lacks: W(lacks.value) };
+          setDraft('absent_rules', d);
+        }
+        [label, prods, clause, has, lacks].forEach(function (x) { x.addEventListener('input', upd); });
+        function move(by) { var d = copy(state.draft.absent_rules), x = d.splice(i, 1)[0]; d.splice(i + by, 0, x); setDraft('absent_rules', d); draw(); }
+        host.appendChild(el('details', { class: 'mr-item mr-prop' },
+          el('summary', {}, el('strong', { text: r.label || '(no text)' }), el('span', { class: 'muted', text: ' - ' + (r.products.length ? r.products.join(', ') : 'every product') })),
+          el('div', { class: 'mr-prop-grid' },
+            el('label', { class: 'field mr-wide' }, el('span', { text: 'The hint says (the reason)' }), label),
+            el('label', { class: 'field mr-wide' }, el('span', { text: 'Clause words (commas)' }), clause),
+            el('label', { class: 'field' }, el('span', { text: 'Datasheet has one of' }), has),
+            el('label', { class: 'field' }, el('span', { text: 'Datasheet has none of' }), lacks),
+            el('label', { class: 'field' }, el('span', { text: 'Products (ids)' }), prods)),
+          el('div', { class: 'row' },
+            i > 0 ? moveBtn('\u2191', 'Move up', function () { move(-1); }) : null,
+            i < state.draft.absent_rules.length - 1 ? moveBtn('\u2193', 'Move down', function () { move(1); }) : null,
+            moveBtn('Remove', 'Remove this rule', function () { var d = copy(state.draft.absent_rules); d.splice(i, 1); setDraft('absent_rules', d); draw(); }))));
+      });
+      host.appendChild(el('button', { type: 'button', class: 'btn small', text: 'Add a rule', on: { click: function () {
+        var d = copy(state.draft.absent_rules); d.push({ label: 'No ... on the datasheet', products: [V_PRODUCT()], clause: ['word'], has: [], lacks: ['word'] }); setDraft('absent_rules', d); draw();
+        var all = host.querySelectorAll('details'); if (all.length) all[all.length - 1].open = true;
+      } } }));
+    }
+    draw();
+    cards.__drawAbsent = draw;
+    return host;
+  }
+  function V_PRODUCT() { return (state.products[0] || {}).id || 'ahu'; }
   function editorFor(key) {
+    if (key === 'hint_scope') return boolEditor(key, ' Show "In Contractor\'s Scope?" under the clauses that are the contractor\'s work');
+    if (key === 'hint_absent') return boolEditor(key, ' Show "Not Applicable?" under the clauses that ask for something the unit has not');
+    if (key === 'scope_parts') return listEditor(key, false);
+    if (key === 'scope_words' || key === 'scope_sections' || key === 'scope_manufacturer') return listEditor(key, true);
+    if (key === 'absent_rules') return absentEditor();
     if (S.NUMBERS[key]) return numberEditor(key);
     if (key === 'topics') return topicsEditor();
     if (key === 'section_topics') return sectionsEditor();
@@ -288,6 +358,9 @@
       el('p', { class: 'muted', text: 'For a row the project has no datasheet value for, the dashed chip names the approved Product Options value that meets the clause. These settings decide what "meets" and "better" mean.' }),
       TABS.picks.map(function (k) { return card(k, editorFor(k)); }));
     panels.vocab = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'vocab', hidden: true }, vocabPanel());
+    panels.hints = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'hints', hidden: true },
+      el('p', { class: 'muted', text: 'The compliance is answered as the manufacturer, for the contractor and the consultant. Two answers come up again and again: the contractor\'s work ("In Contractor\'s Scope") and what the unit does not have ("Not Applicable"). These rules put a dotted hint under such clauses; a press on it in Edit answers the clause. A hint is never filled by itself, and an approved library answer of the same clause (green) still comes first.' }),
+      TABS.hints.map(function (k) { return card(k, editorFor(k)); }));
     panels.record = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'record', hidden: true }, fixedCard(FIXED[1]));
     panels.fixed = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'fixed', hidden: true },
       el('p', { class: 'muted', text: 'What the code still decides on its own. Nothing is hidden: if one of these needs to change, ask for it to be moved to the settings above.' }),
@@ -306,6 +379,8 @@
     if (key === 'topics' && cards.__drawTopics) cards.__drawTopics();
     else if (key === 'section_topics' && cards.__drawSections) cards.__drawSections();
     else if (key === 'properties' && cards.__drawProps) cards.__drawProps();
+    else if (key === 'absent_rules' && cards.__drawAbsent) cards.__drawAbsent();
+    else if (key === 'hint_scope' || key === 'hint_absent') { var b = document.getElementById('in-' + key); if (b) b.checked = state.draft[key] !== false; }
     else {
       var input = document.getElementById('in-' + key);
       if (input) input.value = S.NUMBERS[key] ? state.draft[key] : commas(state.draft[key]);
@@ -604,6 +679,25 @@
     }, function (err) { box.removeChild(box.lastChild); box.appendChild(el('p', { class: 'muted', text: 'The vocabulary could not be read: ' + Core.errorMessage(err) })); });
   }
 
+  /* Try a clause: the hints. "In Contractor's Scope?" as on a record; "Not Applicable?" needs a project's datasheet, so the
+     rules whose clause words fit are listed with what the datasheet must show. */
+  function tryHints(productId, text, head) {
+    var part = +($('#try-part') ? $('#try-part').value : 2), section = $('#try-section') ? $('#try-section').value.trim() : '';
+    var box = el('div', { class: 'mr-try-vocab' }, el('h3', { text: 'Hints' }));
+    var got = window.PRHints.one(text, { part: part, section: section, heading: head, product: productId, sheet: '', values: state.draft });
+    var t = window.PRHints.norm(text) + ' ' + window.PRHints.norm(head);
+    var fits = state.draft.absent_rules.filter(function (r) {
+      return (!r.products.length || r.products.indexOf(productId) >= 0) && r.clause.length && window.PRSettings.topicRegex(r.clause).test(t);
+    });
+    if (!got.length && !fits.length) box.appendChild(el('p', { class: 'muted', text: 'No hint for this clause.' }));
+    if (got.length) box.appendChild(el('ul', { class: 'mr-hits' }, got.map(function (h) { return el('li', {}, el('strong', { text: h.answer + '?' }), ' - ' + h.reason); })));
+    if (fits.length) box.appendChild(el('ul', { class: 'mr-hits' }, fits.map(function (r) {
+      return el('li', {}, el('strong', { text: 'Not Applicable?' }), ' - ' + r.label + ', when the project\'s datasheet ' +
+        [r.has.length ? 'shows one of ' + commas(r.has) : '', r.lacks.length ? 'shows none of ' + commas(r.lacks) : ''].filter(Boolean).join(' and ') + '.');
+    })));
+    tryOut.appendChild(box);
+  }
+
   /* ---------- try a clause ---------- */
   var tryOut;
   function tryCard() {
@@ -618,7 +712,10 @@
       el('p', { class: 'muted', text: 'Type or paste one clause. It is matched with the values on this page, saved or not, so you can see what a change does before you save it. Nothing is saved or sent.' }),
       el('div', { class: 'mr-try-grid' },
         el('label', { class: 'field' }, el('span', { text: 'Product (its row mapping)' }), prod),
-        el('label', { class: 'field' }, el('span', { text: 'Heading above the clause' }), head)),
+        el('label', { class: 'field' }, el('span', { text: 'Heading above the clause' }), head),
+        el('label', { class: 'field' }, el('span', { text: 'Part of the specification' }),
+          el('select', { id: 'try-part' }, [2, 1, 3].map(function (n) { return el('option', { value: String(n), text: 'Part ' + n + (n === 1 ? ' (General)' : n === 2 ? ' (Products)' : ' (Execution)') }); }))),
+        el('label', { class: 'field' }, el('span', { text: 'Section title' }), el('input', { type: 'text', id: 'try-section', maxlength: 120, placeholder: 'e.g. Installation (optional)' }))),
       el('label', { class: 'field' }, el('span', { text: 'Clause' }), text),
       el('div', { class: 'row' }, go),
       tryOut);
@@ -682,6 +779,7 @@
         }),
         classes.map(function (cl2) { return el('li', {}, el('strong', { text: cl2.cls }), ' - ' + cl2.prop.name + ', this class or better (scale ' + commas(cl2.prop.scale) + ')'); })));
       tryVocab(productId, text, head, rules);
+      tryHints(productId, text, head);
       S.apply(state.current);
     }, function (err) { Core.clear(tryOut); tryOut.appendChild(el('p', { class: 'mr-error', text: Core.errorMessage(err) })); });
   }
@@ -701,10 +799,11 @@
     if (key === 'topics') return v.length + ' topics';
     if (key === 'properties') return v.length + ' properties';
     if (key === 'section_topics') return v.length + ' sections';
+    if (key === 'absent_rules') return v.length + ' rules';
     return commas(v);
   }
   // lists of named items: which were added, taken out or changed, by name
-  var NAMED = { topics: 'id', properties: 'name', section_topics: 'section' };
+  var NAMED = { topics: 'id', properties: 'name', section_topics: 'section', absent_rules: 'label' };
   function change(key, o, n) {
     var by = NAMED[key];
     if (!by) return summary(key, o) + ' → ' + summary(key, n);

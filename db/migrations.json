@@ -48,6 +48,10 @@
     {
       "name": "012_vocab_types",
       "path": "db/projects/012_vocab_types.sql"
+    },
+    {
+      "name": "013_hints",
+      "path": "db/projects/013_hints.sql"
     }
   ]
 }

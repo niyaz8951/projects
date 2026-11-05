@@ -384,6 +384,9 @@ body.pr-legacy.has-dock .page { padding-bottom: calc(110px + env(safe-area-inset
 .pr-legacy .rc-chip.v-check .rc-mark { color: var(--warn); }
 .pr-legacy .rc-chip.v-below { border-color: color-mix(in srgb, var(--danger) 55%, transparent); }
 .pr-legacy .rc-chip.v-below .rc-mark { color: var(--danger); }
+.pr-legacy .rc-chip.hint { background: transparent; border-style: dotted; border-color: var(--border); color: var(--text-soft); }      /* a hint (pr-hints.js) */
+.pr-legacy .rc-chip.hint b { color: var(--text); }
+.pr-legacy .rc-chip.hint:hover { border-color: var(--text-soft); color: var(--text); }
 .pr-legacy .rc-chip.opt { background: transparent; border-style: dashed; }
 .pr-legacy /* no datasheet: what to select, .pr-legacy from Product Options */
   .rc-chip.opt.miss b { color: var(--warn); }
@@ -594,6 +597,7 @@ body.pr-legacy.has-dock .page { padding-bottom: calc(110px + env(safe-area-inset
 .pr-legacy .rc-page-head { margin-bottom: 14px; }
 .pr-legacy .rc-legend .lg-sheet::before { background: var(--brand); }
 .pr-legacy .rc-legend .lg-opt::before { background: transparent; border: 1.5px dashed var(--brand); box-sizing: border-box; }
+.pr-legacy .rc-legend .lg-hint::before { background: transparent; border: 1.5px dotted var(--text-soft); box-sizing: border-box; }
 .pr-legacy .rc-progress i.ai[hidden] { display: none; }
 .pr-legacy .as-drop .ic .icon { background: transparent; box-shadow: none; width: 30px; height: 30px; }
 .pr-legacy .as-drop .ic .icon::after { background: var(--on-brand); inset: 2px; }

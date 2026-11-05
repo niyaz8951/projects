@@ -72,7 +72,8 @@
                    draft: l.ai_draft ? { reason: (l.ai && l.ai.reason) || "", confidence: (l.ai && l.ai.confidence) || "" } : null,
                    comments: run.can_comment ? l.lib_comments || "" : undefined,
                    review: l.tl_review || "", canReview: !!run.can_review,       // a box for the people who may write them, a line of text for everyone else
-                   others: (l.lib_comments && !run.can_comment ? ["Internal comment · " + l.lib_comments] : []).concat((sheetOf[lines.indexOf(l)] || []).map(function (d) { var v = chipVerdict(d, l); return "Datasheet · " + d.component + ": " + valueText(d.cells) + (v ? " · " + v.mark : ""); })) });
+                   others: (l.lib_comments && !run.can_comment ? ["Internal comment · " + l.lib_comments] : []).concat((sheetOf[lines.indexOf(l)] || []).map(function (d) { var v = chipVerdict(d, l); return "Datasheet · " + d.component + ": " + valueText(d.cells) + (v ? " · " + v.mark : ""); }),
+                     (hintsOf[lines.indexOf(l)] || []).filter(function (h) { return h.answer !== s.c; }).map(function (h) { return "Hint · " + h.answer + "? " + h.reason; })) });
     });
     // Opens where the user is: the clause at the top of the window once he has scrolled into the
     // specification, otherwise the first clause still to fill.
@@ -513,6 +514,21 @@
     } catch (e) { return verdicts[id] = null; }
   }
   var specRowsOf = null;
+  /* Hints (pr-hints.js): "In Contractor's Scope?" and "Not Applicable?". Shown while the clause has another answer; in
+     Edit a tap puts the answer in the Compliance box and saves it, as if typed. */
+  var hintsOf = {};
+  function hintChips(l) {
+    var c = shown(l).c;
+    return (hintsOf[lines.indexOf(l)] || []).filter(function (h) { return h.answer !== c; }).map(function (h) {
+      return el("button", { type: "button", "class": "rc-chip hint", title: h.answer + "? " + h.reason + "." + (editing ? " Press to answer it." : " Switch to Edit to answer it with one press."),
+        onclick: function (e) {
+          var tr = e.currentTarget.closest("tr"), box = tr && tr.querySelector("input[list]");
+          if (!box) { Hub.toast("Switch to Edit, then press the hint to answer it."); return; }
+          box.value = h.answer; box.dispatchEvent(new Event("change"));        // saved as if typed; Remarks stay the reader's
+          e.currentTarget.remove();
+        } }, [el("b", { text: h.answer + "?" }), el("span", { text: h.reason })]);
+    });
+  }
   function sheetChips(sheet, l) {
     var blue = sheet.map(function (d) {
       var v = chipVerdict(d, l);
@@ -521,7 +537,7 @@
         PROptions.open({ productId: run.product_id, product: run.product, factory: match.factory || run.factory, key: d.key, section: d.section, component: d.component, values: d.cells });
       } }, [el("b", { text: d.component }), el("span", { text: valueText(d.cells) }), v ? el("i", { "class": "rc-mark", text: v.mark }) : null]);
     });
-    var all = blue.concat(optChips(l));
+    var all = blue.concat(optChips(l), hintChips(l));
     return all.length ? el("div", { "class": "rc-sheet" }, all) : null;
   }
   /* Rows a clause asks about that have no datasheet value: what to select, from the factory's approved Product Options
@@ -546,7 +562,20 @@
   }
   function loadMatch() {
     PRMatch.load({ projectId: run.project_id, productId: run.product_id, specRows: lines.map(function (l) { return { type: l.type, sr: l.sr, spec: l.spec }; }) }).then(function (m) {
-      match = m; sheetOf = {}; verdicts = {}; specRowsOf = null;
+      match = m; sheetOf = {}; verdicts = {}; specRowsOf = null; hintsOf = {};
+      var hinted = 0;
+      if (window.PRHints) {
+        var st = window.PRSettings && window.PRSettings.DEFAULTS ? window.PRSettings.load() : Promise.resolve(null);
+        st.then(function (s) {
+          var built = PRHints.build({ lines: lines, values: (s && s.values) || PRSettings.DEFAULTS, product: run.product_id, sheet: m.hasNotes ? m.sheetText : "" });
+          hintsOf = built.by_index; hinted = built.count;
+          if (hinted && !CMFocus.isOpen()) settled().then(function () {
+            var a = document.activeElement;
+            if (a && $("rc-body").contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { chipsDue = true; return; }
+            draw();
+          });
+        });
+      }
       loadSelection(m);
       // a row the datasheet has a value for is a blue chip; a row without one gets the dashed Product Options chip instead (per row, owner)
       m.table.forEach(function (r) { if (r.kind === "row" && r.found && m.hasNotes && PRMatch.hasValue(r)) r.lines.forEach(function (i) { (sheetOf[i] = sheetOf[i] || []).push(r); }); });

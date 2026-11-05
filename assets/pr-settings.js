@@ -92,7 +92,40 @@
     /* ---- 3. The vocabulary (011, pr-vocab.js) ---- */
     vocab_products: [],          // products matched by their verified vocabulary; a row no verified type points at keeps its Spec keywords
     vocab_fallback: true,        // a row the vocabulary covers but finds no clause for in this specification: its Spec keywords are used
-    vocab_types: 6               // 012: requirement types read per clause (only types that point at a datasheet row count)
+    vocab_types: 6,              // 012: requirement types read per clause (only types that point at a datasheet row count)
+
+    /* ---- 4. Hints under a clause (013, pr-hints.js): answered as the manufacturer; a tap in Edit fills the answer ---- */
+    hint_scope: true,            // "In Contractor's Scope?"
+    hint_absent: true,           // "Not Applicable?"
+    scope_parts: [3],            // every clause of these Parts (Execution), unless it names the manufacturer's own work
+    // these words put a clause in the contractor's scope in any Part (whole words; "*" = any ending)
+    scope_words: ['by the contractor', 'by contractor', 'by others', 'contractor shall', 'contractor to', 'installer shall', 'field installed', 'field install*',
+                  'site install*', 'concrete base*', 'concrete pad*', 'housekeeping pad*', 'anchor bolt*', 'dowel rod*', 'coordination drawing*', 'field measurement*',
+                  'field quality control', 'testing adjusting and balancing', 'mechanical room layout', 'in contractor s scope'],
+    // and every clause of a section with these words in its title, unless it names the manufacturer's own work
+    scope_sections: ['coordination', 'installation', 'connections', 'examination', 'field quality control', 'adjusting', 'cleaning', 'protection', 'preparation'],
+    // the manufacturer's own work: a clause or section title with these words gets no Part or section hint
+    scope_manufacturer: ['manufacturer s field service', 'manufacturer s representative', 'factory authorized', 'service representative', 'start up service',
+                         'startup service', 'training', 'train owner*', 'demonstrat*', 'instruct owner*', 'factory test*', 'witness test*'],
+    // the clause asks for something this unit has not: "Not Applicable?". clause: words in the clause (or the heading above
+    // it); has: the project's datasheet must show one of these; lacks: the datasheet must show none of these. products: [] = all
+    absent_rules: [
+      { label: 'No humidifier on the datasheet', products: ['ahu'], clause: ['humidifier*', 'humidification', 'evaporative section*', 'steam humidif*', 'air washer*'], has: [], lacks: ['humidif*', 'evaporative', 'washer*'] },
+      { label: 'No electric heater on the datasheet', products: ['ahu', 'fcu'], clause: ['electric heater*', 'electric heating', 'electrical heater*', 'heater batter*', 'duct heater*', 'electric coil*'], has: [], lacks: ['heater*', 'electric heating'] },
+      { label: 'No chilled-water coil on the datasheet', products: ['ahu'], clause: ['chilled water coil*', 'chw coil*', 'water cooling coil*', 'cooling water coil*'], has: [], lacks: ['coil cooling water*', 'chilled water', 'water coil*'] },
+      { label: 'No hot-water coil on the datasheet', products: ['ahu'], clause: ['hot water coil*', 'heating water coil*', 'hot water heating coil*', 'lphw coil*'], has: [], lacks: ['coil heating water*', 'hot water', 'heating water'] },
+      { label: 'No steam coil on the datasheet', products: ['ahu'], clause: ['steam coil*', 'steam heating coil*'], has: [], lacks: ['steam'] },
+      { label: 'No DX coil on the datasheet', products: ['ahu'], clause: ['dx coil*', 'direct expansion', 'refrigerant coil*', 'evaporator coil*'], has: [], lacks: ['dx', 'direct expansion', 'refrigerant', 'r407c', 'r410a', 'r32', 'r454b', 'r134a'] },
+      { label: 'An air handling unit has no condenser', products: ['ahu'], clause: ['condenser*', 'condensing unit*', 'condensing section*'], has: [], lacks: ['condenser*'] },
+      { label: 'EC direct-drive fans: no belts, pulleys or belt guards', products: ['ahu'], clause: ['belt*', 'v belt*', 'sheave*', 'pulley*', 'drive alignment'], has: ['ec', 'direct drive*', 'plug fan*'], lacks: ['belt*'] },
+      { label: 'EC fans: starting and speed control are in the fan electronics', products: ['ahu'], clause: ['soft starter*', 'soft motor starter*', 'motor starter*', 'direct online', 'direct on line', 'star delta', 'dol starter*'], has: ['ec'], lacks: [] },
+      { label: 'EC direct-drive fans: no slide rails', products: ['ahu'], clause: ['slide rail*'], has: ['ec', 'direct drive*'], lacks: ['slide rail*'] },
+      { label: 'EC plug fans: no fan discharge dampers', products: ['ahu'], clause: ['discharge damper*'], has: ['ec', 'plug fan*'], lacks: ['discharge damper*'] },
+      { label: 'No heat recovery on the datasheet', products: ['ahu'], clause: ['heat wheel*', 'thermal wheel*', 'enthalpy wheel*', 'energy wheel*', 'rotary heat exchanger*', 'plate heat exchanger*', 'heat pipe*', 'run around coil*', 'recuperator*'], has: [], lacks: ['wheel*', 'recuperator*', 'heat pipe*', 'plate heat exchanger*', 'run around*', 'cross flow*', 'counter flow*'] },
+      { label: 'No sound attenuator on the datasheet', products: ['ahu'], clause: ['attenuator*', 'silencer*', 'sound attenuator*'], has: [], lacks: ['attenuator*', 'silencer*', 'splitter*'] },
+      { label: 'No mixing box on the datasheet', products: ['ahu'], clause: ['mixing box*', 'mixing section*'], has: [], lacks: ['mixing*'] },
+      { label: 'No UV lamps on the datasheet', products: ['ahu'], clause: ['uv lamp*', 'uvc', 'ultraviolet', 'germicidal'], has: [], lacks: ['uv', 'uvc', 'ultraviolet', 'germicidal'] }
+    ]
   };
 
   var ORDER = Object.keys(DEFAULTS);
@@ -137,6 +170,26 @@
     if (key === 'parts') {
       return Array.isArray(v) && v.length >= 1 && v.length <= 5 && v.every(function (n, k) { return typeof n === 'number' && Math.floor(n) === n && n >= 1 && n <= 9 && v.indexOf(n) === k; })
         ? '' : '1 to 5 different Part numbers from 1 to 9';
+    }
+    if (key === 'hint_scope' || key === 'hint_absent') return typeof v === 'boolean' ? '' : 'yes or no';
+    if (key === 'scope_parts') {
+      return Array.isArray(v) && v.length <= 5 && v.every(function (n, k) { return typeof n === 'number' && Math.floor(n) === n && n >= 1 && n <= 9 && v.indexOf(n) === k; })
+        ? '' : 'up to 5 different Part numbers from 1 to 9 (none is allowed)';
+    }
+    if (key === 'scope_words' || key === 'scope_sections' || key === 'scope_manufacturer') {
+      return strList(v, 200, function (s) { return s.length <= 60 && WORD.test(s); }) ? '' : 'words or phrases of small letters and digits, "*" only at a word end, up to 200';
+    }
+    if (key === 'absent_rules') {
+      if (!Array.isArray(v) || v.length > 100) return 'at most 100 rules';
+      for (var a = 0; a < v.length; a++) {
+        var r = v[a], at2 = 'rule ' + (a + 1) + ': ', words = function (s) { return s.length <= 60 && WORD.test(s); };
+        if (!r || typeof r !== 'object' || typeof r.label !== 'string' || !r.label.trim() || r.label.length > 120) return at2 + 'a text up to 120 characters';
+        if (!strList(r.products, 20, function (s) { return /^[a-z0-9_-]{1,40}$/.test(s); })) return at2 + 'product ids';
+        if (!strList(r.clause, 60, words) || !r.clause.length) return at2 + '1 to 60 clause words of small letters and digits, "*" only at a word end';
+        if (!strList(r.has, 40, words) || !strList(r.lacks, 40, words)) return at2 + 'datasheet words of small letters and digits, "*" only at a word end';
+        if (!r.has.length && !r.lacks.length) return at2 + 'at least one datasheet word (has or lacks)';
+      }
+      return '';
     }
     if (key === 'vocab_fallback') return typeof v === 'boolean' ? '' : 'yes or no';
     if (key === 'vocab_products') {
