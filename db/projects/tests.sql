@@ -1,6 +1,6 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 008. Rolled back.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 009. Rolled back.
 -- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
--- demo_user with 'edit') and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
+-- demo_user with no right: since 009 the tile alone lets a user create and work in his projects) and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
 
 do $$
@@ -9,11 +9,11 @@ begin
     raise exception 'Register the tile ''projects'' in Admin > Tiles first';
   end if;
 end $$;
-update core.tiles set enabled = true, rights = array['edit', 'review'] where id = 'projects';
+update core.tiles set enabled = true, rights = array['review'] where id = 'projects';
 insert into core.tile_access (user_id, tile_id, is_admin, rights)
   select p.id, 'projects', true, '{}' from core.profiles p where p.username = 'demo_admin' on conflict do nothing;
 insert into core.tile_access (user_id, tile_id, is_admin, rights)
-  select p.id, 'projects', false, array['edit'] from core.profiles p where p.username = 'demo_user' on conflict do nothing;
+  select p.id, 'projects', false, '{}' from core.profiles p where p.username = 'demo_user' on conflict do nothing;
 
 create temp table t_ids as select username k, id from core.profiles where username in ('demo_admin','demo_user','demo_none','demo_pending');
 grant select on t_ids to public;
@@ -21,8 +21,10 @@ grant select on t_ids to public;
 create or replace function pg_temp.act_as(p_key text) returns void language plpgsql as $$
 declare v_id uuid; v_sid uuid := gen_random_uuid();
 begin
+  execute 'reset role';
   if p_key is null then perform set_config('request.jwt.claims', '', true); perform set_config('role', 'anon', true); return; end if;
   select id into v_id from t_ids where k = p_key;
+  insert into auth.sessions (id, user_id, created_at, updated_at) values (v_sid, v_id, now(), now()); -- as Supabase Auth at sign-in
   perform set_config('request.jwt.claims', json_build_object('sub', v_id, 'session_id', v_sid, 'role', 'authenticated')::text, true);
   perform set_config('role', 'authenticated', true);
   perform public.core_session_start();
@@ -63,7 +65,7 @@ begin
   perform pg_temp.expect_error('select public.projects_create(''Sample Tower'', ''Consultant'', ''Sample Consultants'', ''UAE'')', 'NO_ACCESS');
   reset role;
 
-  -- user with 'edit': lists, create, get, update
+  -- a plain user (the tile, no right): lists, create, get, update
   perform pg_temp.act_as('demo_user');
   select public.projects_lists() into v;
   if jsonb_array_length(v -> 'regions') < 5 or jsonb_array_length(v -> 'client_types') < 3 then raise exception 'lists'; end if;
@@ -114,9 +116,9 @@ begin
   perform public.projects_update(v_id, 'Sample Tower C', 'Contractor', 'Sample Consultants', 'UAE'); -- admin edits any
   reset role;
 
-  -- another plain user with the tile and 'edit': only his own projects; another user's record is NOT_FOUND
+  -- another plain user with the tile: only his own projects; another user's record is NOT_FOUND
   insert into core.tile_access (user_id, tile_id, is_admin, rights)
-    select id, 'projects', false, array['edit'] from t_ids where k = 'demo_none';
+    select id, 'projects', false, '{}' from t_ids where k = 'demo_none';
   perform pg_temp.act_as('demo_none');
   select count(*) into n from public.projects_list(null, null, null); if n <> 0 then raise exception 'other user sees nothing: %', n; end if;
   perform pg_temp.expect_error(format('select public.projects_get(%L)', v_id), 'NOT_FOUND');
@@ -201,22 +203,19 @@ begin
   perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''boat'', ''x'', ''["A"]''::jsonb, ''[{}]''::jsonb, '''')', v_id), 'INVALID:product_id');
   perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''["A"]''::jsonb, ''[{}]''::jsonb, '''')', gen_random_uuid()), 'NOT_FOUND');
   reset role;
-  -- another user (demo_none has the tile and 'edit' since the block above): the table is NOT_FOUND to read, save into or delete
+  -- another user (demo_none has the tile since the block above): the table is NOT_FOUND to read, save into or delete
   perform pg_temp.act_as('demo_none');
   perform pg_temp.expect_error(format('select public.projects_note_get(%L)', v_note), 'NOT_FOUND');
   perform pg_temp.expect_error(format('select public.projects_note_delete(%L)', v_note), 'NOT_FOUND');
   perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''["A"]''::jsonb, ''[{}]''::jsonb, '''')', v_id), 'NOT_FOUND');
   reset role;
-  -- a reader (no right): sees the table, cannot add rows, collect, save or delete
-  update core.tile_access set rights = '{}' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
+  -- the tile alone (009): adds rows and collects without any right; a table that is not his stays NOT_FOUND
   perform pg_temp.act_as('demo_user');
-  select public.projects_note_get(v_note) into v; if (v ->> 'id') is null then raise exception 'reader reads own table'; end if;
-  perform pg_temp.expect_error('select public.projects_dn_add_rows(''ahu'', ''[]''::jsonb)', 'NO_RIGHT');
-  perform pg_temp.expect_error('select public.projects_po_collect(''ahu'', ''[]''::jsonb)', 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_note_delete(%L)', v_note), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''["A"]''::jsonb, ''[{}]''::jsonb, '''')', v_id), 'NO_RIGHT');
+  select public.projects_note_get(v_note) into v; if (v ->> 'id') is null then raise exception 'user reads own table'; end if;
+  select public.projects_dn_add_rows('ahu', '[]'::jsonb) into v; if (v ->> 'added')::int <> 0 then raise exception 'add_rows empty: %', v; end if;
+  select public.projects_po_collect('ahu', '[]'::jsonb) into v; if (v ->> 'saved')::int <> 0 then raise exception 'po_collect empty: %', v; end if;
+  perform pg_temp.expect_error(format('select public.projects_note_delete(%L)', gen_random_uuid()), 'NOT_FOUND');
   reset role;
-  update core.tile_access set rights = array['edit'] where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
   -- the admin opens and deletes any
   perform pg_temp.act_as('demo_admin');
   perform public.projects_note_delete(v_note);
@@ -322,28 +321,20 @@ begin
   reset role;
   if (select review from projects.run_lines where run_id = v_run2 and seq = 1) <> '' then raise exception 'pending withdrawn'; end if;
   if (select count(*) from projects.lines where factory_id = 'ahu-riyadh') <> 4 then raise exception 'library keeps the clauses'; end if;
-  -- another user: the record is NOT_FOUND; a reader: reads, cannot write
+  -- another user: the record is NOT_FOUND; the creator (no right) fills it
   perform pg_temp.act_as('demo_none');
   perform pg_temp.expect_error(format('select public.projects_run_get(%L)', v_run), 'NOT_FOUND');
   perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', null)', v_run), 'NOT_FOUND');
   perform pg_temp.expect_error(format('select public.projects_export(%L)', v_id), 'NOT_FOUND');
   reset role;
-  update core.tile_access set rights = '{}' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
   perform pg_temp.act_as('demo_user');
-  select public.projects_run_get(v_run) into v; if (v -> 'run' ->> 'can_edit')::boolean then raise exception 'reader can_edit'; end if;
-  select public.projects_export(v_id) into v; if (v -> 'project' ->> 'code') <> v_code then raise exception 'reader exports'; end if;
-  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', null)', v_run), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_run_fill_section(%L, 1, ''Noted'', false, null)', v_run), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_run_split(%L, 3, ''[]''::jsonb, null)', v_run), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_run_join(%L, 3, null)', v_run), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_run_delete(%L)', v_run), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_run_submit_answers(%L, ''[{}]''::jsonb)', v_run), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_run_save(%L, ''ahu-riyadh'', ''pdf'', ''x'', ''[{"type":"text","spec":"x"}]''::jsonb)', v_id), 'NO_RIGHT');
+  select public.projects_run_get(v_run) into v; if not (v -> 'run' ->> 'can_edit')::boolean then raise exception 'creator can_edit'; end if;
+  select public.projects_export(v_id) into v; if (v -> 'project' ->> 'code') <> v_code then raise exception 'creator exports'; end if;
+  perform pg_temp.expect_error(format('select public.projects_run_delete(%L)', gen_random_uuid()), 'NOT_FOUND');
   reset role;
-  update core.tile_access set rights = array['edit'] where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
 
   -- compliance review (007): the library for reviewers; an approved answer becomes the library's and pre-fills the record
-  perform pg_temp.act_as('demo_user');                       -- 'edit' only: no review right
+  perform pg_temp.act_as('demo_user');                       -- no right: no Compliance review
   perform pg_temp.expect_error('select public.projects_lib_lines(''ahu-riyadh'')', 'NO_RIGHT');
   perform pg_temp.expect_error(format('select public.projects_review_decide(%L, 2, ''approve'')', v_run), 'NO_RIGHT');
   perform pg_temp.expect_error('select public.projects_lib_import(''ahu-riyadh'', ''x.xlsx'', ''[{}]''::jsonb)', 'NO_RIGHT');
@@ -444,7 +435,7 @@ begin
   update core.profiles set is_super = false where id = (select id from t_ids where k = 'demo_admin');
 
   -- Product Options (008). Riyadh has panel 62 / 50 mm, filter class G4 and two filter sizes, all waiting.
-  perform pg_temp.act_as('demo_user');   -- 'edit' only: reads the approved values, changes nothing
+  perform pg_temp.act_as('demo_user');   -- no right: reads the approved values, changes nothing
   select public.projects_po_tree('ahu-riyadh') into v;
   if (v ->> 'can_edit')::boolean or (v ->> 'can_approve')::boolean or jsonb_array_length(v -> 'sections') <> 0 then raise exception 'po_tree user flags: %', v; end if;
   if (select count(*) from jsonb_array_elements(v -> 'rows') r, jsonb_array_elements(r -> 'values') x) <> 0 then raise exception 'po_tree user sees waiting values'; end if;
@@ -493,8 +484,10 @@ begin
   perform pg_temp.act_as('demo_user');   -- now sees the approved value and the special options
   select public.projects_po_tree('ahu-riyadh') into v;
   if (select string_agg(x ->> 'v', ',') from jsonb_array_elements(v -> 'rows') r, jsonb_array_elements(r -> 'values') x) <> '62 mm' then raise exception 'user sees the approved value only: %', v -> 'rows'; end if;
-  if jsonb_array_length(v -> 'extras') <> 2 or (v -> 'extras' -> 0 ->> 'body') <> '75 mm panel on request (confirm with the factory)'
-     or (v -> 'extras' -> 0 ->> 'section') <> 'Unit Data' or (v -> 'extras' -> 0 ->> 'by') <> 'demo_admin' then raise exception 'extras: %', v -> 'extras'; end if;
+  -- both extras were saved in this one transaction (same time), so their order is by id: find the option by its kind
+  if jsonb_array_length(v -> 'extras') <> 2 or not exists (select 1 from jsonb_array_elements(v -> 'extras') x
+       where x ->> 'kind' = 'option' and x ->> 'body' = '75 mm panel on request (confirm with the factory)'
+         and x ->> 'section' = 'Unit Data' and x ->> 'by' = 'demo_admin') then raise exception 'extras: %', v -> 'extras'; end if;
   select public.projects_po_approved('ahu-riyadh') into v;
   if jsonb_array_length(v -> 'values') <> 1 then raise exception 'po_approved after approval'; end if;
   reset role;
@@ -601,7 +594,7 @@ begin
   if not (v ->> 'can_share')::boolean then raise exception 'admin can_share'; end if;
   select max(members) into n from public.projects_list(v_code, null, null); if n <> 1 then raise exception 'list members count'; end if;
   reset role;
-  perform pg_temp.act_as('demo_none'); -- member with 'edit': sees, opens, edits; cannot share
+  perform pg_temp.act_as('demo_none'); -- member: sees, opens, edits; cannot share
   select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'member sees own + shared: %', n; end if;
   select public.projects_get(v_id) into v; if (v ->> 'can_share')::boolean then raise exception 'member can_share'; end if;
   perform public.projects_update(v_id, 'Sample Tower D', 'Contractor', 'Sample Consultants', 'UAE');
@@ -620,12 +613,14 @@ begin
   reset role;
   delete from core.tile_access where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_none');
 
-  -- a user with the tile but no right: reads, cannot write
-  update core.tile_access set rights = '{}' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
+  -- a user with the tile and no right (009): creates a project, sees his own only, the knowledge base stays closed
   perform pg_temp.act_as('demo_user');
-  select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'reader sees own: %', n; end if;
-  perform pg_temp.expect_error('select public.projects_create(''x'', ''Consultant'', ''x'', ''UAE'')', 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_update(%L, ''x'', ''Consultant'', ''x'', ''UAE'')', v_id), 'NO_RIGHT');
+  select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'user sees own: %', n; end if;
+  select public.projects_create('Sample Depot', 'Consultant', 'Sample Consultants', 'UAE') into v;
+  if (v ->> 'code') not like 'P-' || v_year || '-%' then raise exception 'plain user creates: %', v; end if;
+  select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'user sees his new one: %', n; end if;
+  perform public.projects_update((v ->> 'id')::uuid, 'Sample Depot B', 'Consultant', 'Sample Consultants', 'UAE');
+  perform pg_temp.expect_error('select public.projects_lib_lines(''ahu-riyadh'')', 'NO_RIGHT');   -- the knowledge base stays closed
   reset role;
 
   -- tile switched off: refused for everyone but the super user

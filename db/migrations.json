@@ -1,0 +1,41 @@
+{
+  "repo": "projects",
+  "files": [
+    {
+      "name": "001_init",
+      "path": "db/projects/001_init.sql"
+    },
+    {
+      "name": "002_visibility",
+      "path": "db/projects/002_visibility.sql"
+    },
+    {
+      "name": "003_members",
+      "path": "db/projects/003_members.sql"
+    },
+    {
+      "name": "004_products_factories",
+      "path": "db/projects/004_products_factories.sql"
+    },
+    {
+      "name": "005_datasheets",
+      "path": "db/projects/005_datasheets.sql"
+    },
+    {
+      "name": "006_specifications",
+      "path": "db/projects/006_specifications.sql"
+    },
+    {
+      "name": "007_review",
+      "path": "db/projects/007_review.sql"
+    },
+    {
+      "name": "008_product_options",
+      "path": "db/projects/008_product_options.sql"
+    },
+    {
+      "name": "009_open_edit",
+      "path": "db/projects/009_open_edit.sql"
+    }
+  ]
+}

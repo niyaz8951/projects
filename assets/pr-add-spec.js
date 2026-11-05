@@ -143,7 +143,7 @@
   });
 
   /* ---------- start ---------- */
-  Hub.requireLogin({ right: "edit" }).then(function () {
+  Hub.requireLogin().then(function () {
     if (!projectId || !/^[0-9a-f-]{36}$/i.test(projectId)) throw new Error("No project was chosen. Open a project first, then add a specification.");
     return Promise.all([Api.prGet(Hub.token(), projectId), Api.cmOptions(Hub.token())]);
   }).then(function (res) {

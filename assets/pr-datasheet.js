@@ -316,7 +316,7 @@
   function safeName(s) { return String(s).replace(/[\\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80); }
 
   /* ---------- start ---------- */
-  Core.requireLogin({ tile: PR.TILE, right: 'edit' }).then(function () {
+  Core.requireLogin({ tile: PR.TILE }).then(function () {
     productSel = $('#dn-product'); hint = $('#dn-scope-hint'); upload = $('#dn-upload'); result = $('#dn-result');
     drop = $('#dn-drop'); fileInput = $('#dn-file'); status = $('#dn-status'); mapNote = $('#dn-map-note');
     var id = Core.param('project');

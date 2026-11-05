@@ -4,7 +4,8 @@ window.PR = (function () {
   var el = Core.el;
   var PR = { TILE: 'projects' };
 
-  PR.canEdit = function (me) { return !!me && (me.is_super || (me.rights || []).indexOf('edit') >= 0); };
+  // since 009 every user with the tile creates projects and works in the projects he may open; the database decides which
+  PR.canEdit = function (me) { return !!me; };
   // the knowledge base (Compliance review, Product Options, the row mapping): tile admins, the super user, or 'review'
   PR.canReview = function (me) { return !!me && (me.is_super || me.tile_admin || (me.rights || []).indexOf('review') >= 0); };
 
@@ -70,7 +71,7 @@ window.PR = (function () {
       body: el('div', { class: 'pr-soon' }, el('p', { class: 'notice accent', text: 'Coming in step ' + step }), el('p', { text: text })),
       actions: [{ label: 'Close', kind: 'primary', value: true }] });
   };
-  PR.readOnly = function () { Core.toast('You can read this project; adding to it needs the edit right.'); };
+  PR.readOnly = function () { Core.toast('You can read this project; you cannot add to it.'); };
 
   // Plain error state inside a host element.
   PR.errorBox = function (host, err) {

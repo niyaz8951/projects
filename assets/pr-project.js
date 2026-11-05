@@ -40,7 +40,6 @@
         title = 'Read the datasheet first';
         sub = 'Read the selection datasheet before the specification: the clauses are then compared with the selected units’ values. No datasheet yet? Add the specification: the clauses get the closest values the factory offers (Product Options) and the Excel lists what to select.';
         if (canEdit) { act('Read a datasheet', 'datasheet'); act('Add a specification without a datasheet', 'spec', true); }
-        else sub += ' Someone with the edit right adds them.';
       } else if (open) {
         var left = open.clauses - open.filled;
         title = (open.filled ? 'Continue ' : 'Fill ') + (bareName(open.file_name) || 'the specification');

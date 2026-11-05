@@ -472,7 +472,7 @@
     var facts = $("rc-facts");
     [(run.project_code ? run.project_code + " · " : "") + run.project, run.product + ", " + run.factory + " factory", "Converted by " + run.user + ", " + when(run.created_at)].forEach(function (t) { facts.appendChild(el("span", { "class": "badge", text: t })); });
     $("rc-loading").hidden = true; $("rc-main").hidden = false;
-    if (!run.can_edit) { $("rc-seg").hidden = true; $("rc-mode").textContent = "Reading. Answering needs the edit right."; }
+    if (!run.can_edit) { $("rc-seg").hidden = true; $("rc-mode").textContent = "Reading only."; }
     setMode(false, true); counts(); draw(); reviewNote();
     Hub.autoHide($("rc-workbar"));
     Hub.more($("rc-more"), [$("rc-download"), $("rc-download-work")], "This specification");
