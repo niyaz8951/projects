@@ -13,6 +13,8 @@
              candidates: [{ value, times }], reason, exact }
    A group (the Selection list): { key, section, component, candidates, lines: [{ seq, sr, spec, required, status, pick, reason }] }
    Per row (owner, 2026-11-05): a clause gets a pick for a row only when the project has no datasheet value for it.
+   The properties (which way is better), the class scales and the numbers below are the built-in values; the reviewers
+   change them on the Matching rules page (pr-settings.js, PRPicks.configure).
    ============================================================ */
 (function () {
   'use strict';
@@ -130,6 +132,7 @@
     return (p.direction === 'higher') === up ? 'better' : 'worse';
   }
   var CLASS_RE = /\b(TB[1-5]|T[1-5]|D[1-3]|L[1-3]|[GMFEHU]\d{1,2})\b/g;
+  var FIG = 8, OPT_MAX = 40, CANDS = 12, LISTED = 3;
   function classTokens(text) { var seen = {}, out = []; (String(text || '').toUpperCase().match(CLASS_RE) || []).forEach(function (c) { if (!seen[c]) { seen[c] = 1; out.push(c); } }); return out; }
   function compareClass(required, actual, p) {
     if (!p || !p.scale) return null;
@@ -250,7 +253,7 @@
     var toks = tokensWithPos(clause), k = -1;
     for (var i = 0; i < toks.length; i++) if (toks[i].at >= at) { k = i; break; }
     if (k < 0) return false;
-    var lo = Math.max(0, k - 8), hi = Math.min(toks.length, k + 8), keys = [];
+    var lo = Math.max(0, k - FIG), hi = Math.min(toks.length, k + FIG), keys = [];
     entries.forEach(function (e) { e.forEach(function (w) { if (w.length >= 3 && !/^\d/.test(w)) keys.push(w); }); });
     for (var j = lo; j < hi; j++) if (keys.some(function (w) { return toks[j].w.indexOf(w) === 0; })) return true;
     if (subject) { var st = tokensWithPos(subject); for (var q = 0; q < st.length; q++) if (keys.some(function (w) { return st[q].w.indexOf(w) === 0; })) return true; }
@@ -341,7 +344,7 @@
       var cands = values[row.key] || [];
       var required = reqs.filter(function (r) { return near(clause, r.at, row.entries, subject); }).map(function (r) { return (r.op === 'range' ? fmt(r.lo) + ' to ' : OPS[r.op] || '') + r.m.raw; })
         .concat(classes.map(function (c) { return c.cls + ' (' + c.prop.name + ')'; }));
-      var base = { key: row.key, section: row.section, component: row.component, required: required, candidates: cands.slice(0, 12) };
+      var base = { key: row.key, section: row.section, component: row.component, required: required, candidates: cands.slice(0, CANDS) };
       var meets = [], fails = 0;
       cands.forEach(function (v) {
         var hit = { key: row.key, section: row.section, component: row.component, label: row.section + ' • ' + row.component, cells: [v.value], value: v.value, entries: row.entries };
@@ -353,7 +356,7 @@
         meets.push({ v: v, exact: c.compliance === 'Comply', dist: dist });
       });
       meets.sort(function (a, b) { return (a.exact === b.exact ? 0 : a.exact ? -1 : 1) || (a.dist - b.dist) || (b.v.times - a.v.times); });
-      var list = cands.slice(0, 3).map(function (x) { return x.value + ' (' + x.times + '×)'; }).join(', ') + (cands.length > 3 ? ' and ' + (cands.length - 3) + ' more' : '');
+      var list = cands.slice(0, LISTED).map(function (x) { return x.value + ' (' + x.times + '×)'; }).join(', ') + (cands.length > LISTED ? ' and ' + (cands.length - LISTED) + ' more' : '');
       var asked = required.join(', ') || 'the clause';
       if (meets.length) {
         var p = meets[0].v, exact = meets[0].exact;
@@ -442,7 +445,7 @@
       if (kind === 'duty' || kind === 'project' || kind === 'hide') return;
       var p = values[v.key] || (values[v.key] = []), same = null;
       p.some(function (x) { if (x.value.toLowerCase() === v.value.toLowerCase()) { same = x; return true; } return false; });
-      if (same) same.times += v.times; else if (p.length < 40) p.push({ value: v.value, times: v.times, group: v.grp || '' });
+      if (same) same.times += v.times; else if (p.length < OPT_MAX) p.push({ value: v.value, times: v.times, group: v.grp || '' });
     });
     Object.keys(values).forEach(function (k) { values[k].sort(function (a, b) { return b.times - a.times; }); });
     // the mapping rows each clause is about (the same match as the chips), where the project gives no value
@@ -471,6 +474,28 @@
     return { by_seq: bySeq, rows: list, factory: approved.factory || '', has_sheet: !!(match && match.hasNotes) };
   }
 
-  window.PRPicks = { build: build, measurements: measurements, requirements: requirements, compareDatasheet: compareDatasheet, optionPicks: optionPicks,
+  /* The Matching rules page's values (PRSettings.merge). The class pattern is built from the scales, so a class a
+     reviewer adds to a scale is found in the clauses too. */
+  function configure(v) {
+    if (!v) return;
+    if (v.properties) {
+      PROPERTIES = v.properties.map(function (p) {
+        var o = { name: p.name, terms: p.terms.slice(), direction: p.direction };
+        if (p.unit) o.unit = p.unit;
+        if (p.scale && p.scale.length) o.scale = p.scale.slice();
+        return o;
+      });
+      var cls = [];
+      PROPERTIES.forEach(function (p) { (p.scale || []).forEach(function (c) { if (cls.indexOf(c) < 0) cls.push(c); }); });
+      cls.sort(function (a, b) { return b.length - a.length; });
+      CLASS_RE = cls.length ? new RegExp('\\b(' + cls.join('|') + ')\\b', 'g') : /(?!)/g;
+    }
+    if (v.figure_words != null) FIG = v.figure_words;
+    if (v.option_values != null) OPT_MAX = v.option_values;
+    if (v.candidates_shown != null) CANDS = v.candidates_shown;
+    if (v.choose_listed != null) LISTED = v.choose_listed;
+  }
+
+  window.PRPicks = { build: build, configure: configure, propertyOf: propertyOf, classRequirements: classRequirements, measurements: measurements, requirements: requirements, compareDatasheet: compareDatasheet, optionPicks: optionPicks,
                      poKind: poKind, poAutoKind: poAutoKind, parentOf: parentOf, subjectOf: subjectOf, fmt: fmt, convert: convert };
 })();

@@ -24,8 +24,10 @@
    - Topic gate: a clause about one part of the unit (its own label or
      the nearest heading above it names filters, fans, coils, a VFD ...)
      only links rows of that part of the datasheet. A clause or a row
-     with no topic is not gated. The same lists are in worker/src/lib/rows.ts
-     (the AI's copy); tests/worker/rows-parity.test.ts keeps them equal.
+     with no topic is not gated.
+   - Every list and number above can be changed by the reviewers on the
+     Matching rules page (pr-settings.js, CMRows.configure); the values
+     written below are the built-in ones and stay in use until then.
 
    window.CMRows = { update(rows, product), clear(), sheet(), match, clauses }
    ============================================================ */
@@ -40,7 +42,8 @@
   function norm(s) { return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
   function words(s) { var n = norm(s); return n ? n.split(' ') : []; }
   // a bracketed note does not make a heading long: "HORSESHOE HEAT PIPE (WHEREVER APPLICABLE, AS PER EQUIPMENT SCHEDULE)"
-  function shortHeading(text) { return words(text.replace(/\([^)]*\)/g, ' ')).length <= 8 && !/\b(shall|must|will|should)\b/i.test(text); }
+  var HEAD_WORDS = 8, HEAD_VERBS = /\b(shall|must|will|should)\b/i, LABEL = 80, PARTS = [2, 1], KEEP = 50;
+  function shortHeading(text) { return words(text.replace(/\([^)]*\)/g, ' ')).length <= HEAD_WORDS && !HEAD_VERBS.test(text); }
 
   // parts of a unit, most specific first: a text's topic is the first one it names
   var TOPICS = [
@@ -62,12 +65,15 @@
   var GENERAL = ['casing', 'performance'];
   function topicOf(text) { var t = norm(text); for (var i = 0; i < TOPICS.length; i++) if (TOPICS[i][1].test(t)) return TOPICS[i][0]; return ''; }
   function topicsIn(text) { var t = norm(text); return TOPICS.filter(function (x) { return x[1].test(t); }).map(function (x) { return x[0]; }); }
-  function lead(text) { var c = text.indexOf(':'); return c > 0 && c <= 80 ? text.slice(0, c) : ''; }
+  function lead(text) { var c = text.indexOf(':'); return c > 0 && c <= LABEL ? text.slice(0, c) : ''; }
+  // datasheet sections that name no part of the unit: the topics their rows belong to
+  var SECTIONS = [{ section: 'unit data', how: 'is', topics: ['casing', 'performance'] }, { section: 'mechanical characteristic', how: 'starts', topics: ['casing'] },
+                  { section: 'en 13053', how: 'starts', topics: ['performance', 'fan'] }];
   // the parts of the unit a datasheet row is about: its section's, plus any its sub-heading and name add
   function rowTopics(r) {
-    var sec = norm(r.section);
-    var base = sec === 'unit data' ? ['casing', 'performance'] : /^mechanical characteristic/.test(sec) ? ['casing']
-      : /^en 13053/.test(sec) ? ['performance', 'fan'] : topicsIn(sec);
+    var sec = norm(r.section), base = null;
+    SECTIONS.some(function (x) { if (x.how === 'is' ? sec === x.section : sec.indexOf(x.section) === 0) { base = x.topics; return true; } return false; });
+    base = base || topicsIn(sec);
     var out = [];
     base.concat(topicsIn((r.sub || '') + ' ' + r.component)).forEach(function (x) { if (out.indexOf(x) < 0) out.push(x); });
     return out;
@@ -173,7 +179,7 @@
      section is filled on the first row of a section only. */
   function match(specRows, rules) {
     var cl = clauses(specRows);
-    var hasPart2 = cl.some(function (c) { return c.part === 2; });
+    var hasFirst = cl.some(function (c) { return c.part === PARTS[0]; });
     var out = [], section = null, sub = '';
 
     // keep each section's rows together, sections in the order they first appear
@@ -186,9 +192,9 @@
         var topics = rowTopics(r);
         var hits = [];
         if (entries.length) {
-          [2, 1].some(function (p) {
+          PARTS.some(function (p) {
             cl.forEach(function (c, i) {
-              if (hasPart2 ? c.part !== p : p !== 2) return;      // a spec with no parts is searched whole, once
+              if (hasFirst ? c.part !== p : p !== PARTS[0]) return;      // a spec without the first Part is searched whole, once
               if (topics.length && c.topic && topics.indexOf(c.topic) < 0) return;      // the topic gate
               var s = score(entries, c);
               if (s) hits.push({ c: c, s: s, i: i });
@@ -198,7 +204,7 @@
           hits.sort(function (a, b) { return b.s - a.s || a.i - b.i; });
           // a clause that matches far less well than the best one is noise, not a second answer
           var top = hits.length ? hits[0].s : 0;
-          hits = hits.filter(function (h) { return h.s * 2 >= top; });
+          hits = hits.filter(function (h) { return h.s * 100 >= top * KEEP; });
         }
         var shown = hits.slice(0, MAX).sort(function (a, b) { return a.i - b.i; });
         var text = shown.map(function (h) { return (h.c.ref ? h.c.ref + ': ' : '') + h.c.text; }).join('\n');
@@ -285,8 +291,24 @@
 
   if (only) only.addEventListener('change', function () { if (table) render(); });
 
+  /* The Matching rules page's values (PRSettings.merge): replace the built-in lists and numbers above. */
+  function configure(v) {
+    if (!v) return;
+    var esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+    if (v.topics) TOPICS = v.topics.map(function (t) { return [t.id, window.PRSettings.topicRegex(t.words)]; });
+    if (v.general_topics) GENERAL = v.general_topics.slice();
+    if (v.section_topics) SECTIONS = v.section_topics.map(function (x) { return { section: x.section, how: x.how, topics: x.topics.slice() }; });
+    if (v.parts) PARTS = v.parts.slice();
+    if (v.near_words != null) FAR = v.near_words;
+    if (v.max_clauses != null) MAX = v.max_clauses;
+    if (v.keep_share != null) KEEP = v.keep_share;
+    if (v.heading_words != null) HEAD_WORDS = v.heading_words;
+    if (v.heading_verbs) HEAD_VERBS = v.heading_verbs.length ? new RegExp('\\b(' + v.heading_verbs.map(esc).join('|') + ')\\b', 'i') : /(?!)/;
+    if (v.label_chars != null) LABEL = v.label_chars;
+  }
+
   window.CMRows = {
-    update: update, clear: clear, match: match, clauses: clauses, topicOf: topicOf, rowTopics: rowTopics,
+    update: update, clear: clear, match: match, clauses: clauses, topicOf: topicOf, rowTopics: rowTopics, configure: configure, score: function (e, c) { return score(e, c); },
     /* For the Excel: every row, found or not. null when there is no table. */
     sheet: function () { return table && table.length ? { name: 'Datasheet rows', rows: table } : null; }
   };

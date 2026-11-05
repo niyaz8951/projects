@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" data-loading>
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cykpvtekrdfmqimtrcps.supabase.co; connect-src 'self' https://cykpvtekrdfmqimtrcps.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F3F7FA">
+<title>Matching rules - DAME HUB</title>
+<link rel="stylesheet" href="/dame-hub/core/v1/theme.css">
+<link rel="stylesheet" href="/projects/assets/pr.css">
+<link rel="icon" href="/dame-hub/core/v1/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/dame-hub/core/v1/icons/apple-touch-icon.png">
+<script src="/dame-hub/core/v1/config.js" defer></script>
+<script src="/dame-hub/core/v1/api.js" defer></script>
+<script src="/dame-hub/core/v1/core.js" defer></script>
+<script src="/projects/assets/pr-common.js" defer></script>
+<script src="/projects/assets/pr-hub.js" defer></script>
+<script src="/projects/assets/pr-settings.js" defer></script>
+<script src="/projects/assets/cm-rows.js" defer></script>
+<script src="/projects/assets/pr-picks.js" defer></script>
+<script src="/projects/assets/pr-rules.js" defer></script>
+</head>
+<body>
+<header id="topbar"></header>
+<main>
+  <div class="page-head">
+    <div>
+      <p class="small"><a href="/projects/">&larr; Projects</a></p>
+      <h1>Matching rules</h1>
+      <p class="muted">What decides which datasheet value and which Product Options value show under a clause of a converted specification. No AI and no maps: the record follows these lists and numbers exactly. The built-in values are what the code had; a change you save applies to every project the next time a record is opened.</p>
+    </div>
+  </div>
+
+  <div class="notice warning" id="mr-off" hidden></div>
+
+  <div class="tabs" id="mr-tabs" role="tablist" aria-label="Parts of the rules">
+    <button type="button" role="tab" data-tab="find" aria-selected="true">Finding the row</button>
+    <button type="button" role="tab" data-tab="picks" aria-selected="false">Product Options picks</button>
+    <button type="button" role="tab" data-tab="record" aria-selected="false">What the record shows</button>
+    <button type="button" role="tab" data-tab="fixed" aria-selected="false">Fixed in code</button>
+    <button type="button" role="tab" data-tab="try" aria-selected="false">Try a clause</button>
+    <button type="button" role="tab" data-tab="history" aria-selected="false">History</button>
+  </div>
+
+  <div id="mr-panels" class="stack"></div>
+
+  <div class="mr-savebar" id="mr-savebar" role="region" aria-label="Unsaved changes" hidden>
+    <span id="mr-count"></span>
+    <div class="row">
+      <button type="button" class="btn ghost" id="mr-discard">Discard</button>
+      <button type="button" class="btn primary" id="mr-save">Save changes</button>
+    </div>
+  </div>
+</main>
+</body>
+</html>

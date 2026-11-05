@@ -1,4 +1,4 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 009. Rolled back.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 010. Rolled back.
 -- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
 -- demo_user with no right: since 009 the tile alone lets a user create and work in his projects) and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
@@ -52,6 +52,7 @@ begin
   -- pending: refused before anything else
   perform pg_temp.act_as('demo_pending');
   perform pg_temp.expect_error('select public.projects_lists()', 'NOT_APPROVED');
+  perform pg_temp.expect_error('select public.projects_settings_get()', 'NOT_APPROVED');
   reset role;
 
   perform pg_temp.expect_error('select public.projects_products()', 'NOT_APPROVED');
@@ -63,6 +64,9 @@ begin
   perform pg_temp.expect_error('select public.projects_products()', 'NO_ACCESS');
   perform pg_temp.expect_error('select public.projects_list(null, null, null)', 'NO_ACCESS');
   perform pg_temp.expect_error('select public.projects_create(''Sample Tower'', ''Consultant'', ''Sample Consultants'', ''UAE'')', 'NO_ACCESS');
+  perform pg_temp.expect_error('select public.projects_settings_get()', 'NO_ACCESS');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"max_clauses": 2}''::jsonb)', 'NO_ACCESS');
+  perform pg_temp.expect_error('select public.projects_settings_history(10)', 'NO_ACCESS');
   reset role;
 
   -- a plain user (the tile, no right): lists, create, get, update
@@ -621,6 +625,67 @@ begin
   select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'user sees his new one: %', n; end if;
   perform public.projects_update((v ->> 'id')::uuid, 'Sample Depot B', 'Consultant', 'Sample Consultants', 'UAE');
   perform pg_temp.expect_error('select public.projects_lib_lines(''ahu-riyadh'')', 'NO_RIGHT');   -- the knowledge base stays closed
+  reset role;
+
+
+  -- Matching rules (010): everyone with the tile reads them, only 'review' changes them; the built-in values pass the checks
+  perform pg_temp.act_as(null);
+  perform pg_temp.expect_error('select public.projects_settings_get()', 'PERMISSION');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"max_clauses": 2}''::jsonb)', 'PERMISSION');
+  reset role;
+  v := '{"topics":[{"id":"vfd","words":["variable frequency","variable speed","frequency controller","frequency controllers","vfd","vfds","vfc","vfcs","inverter","inverters"]},{"id":"filter","words":["filter","filters","filtration","hepa","merv"]},{"id":"humid","words":["humidif*","washer","washers","evaporative"]},{"id":"heatpipe","words":["heat pipe","heat pipes","horseshoe","wrap around"]},{"id":"recovery","words":["energy recovery","heat recovery","heat wheel","heat wheels","energy wheel","energy wheels","enthalpy wheel","enthalpy wheels","recuperator","recuperators","heat exchanger","heat exchangers","run around"]},{"id":"heater","words":["heater","heaters","electric heat*","electrical heat*","heating coil","heating coils","coil heating","coils heating"]},{"id":"coil","words":["coil","coils"]},{"id":"damper","words":["damper","dampers","mixing box","mixing boxes","mixing section","mixing sections"]},{"id":"attenuator","words":["attenuator","attenuators","silencer","silencers"]},{"id":"sound","words":["sound","acoustic*","noise"]},{"id":"fan","words":["fan","fans","motor","motors","drive","drives","impeller","impellers"]},{"id":"casing","words":["casing","casings","cabinet","cabinets","panel","panels","insulation","drain pan","drain pans","door","doors","roof","roofs","base","bases","frame","frames","structural"]},{"id":"electrical","words":["electrical","power supply","wiring","voltage"]},{"id":"performance","words":["capacity","capacities","characteristics","performance"]}],"general_topics":["casing","performance"],"section_topics":[{"section":"unit data","how":"is","topics":["casing","performance"]},{"section":"mechanical characteristic","how":"starts","topics":["casing"]},{"section":"en 13053","how":"starts","topics":["performance","fan"]}],"parts":[2,1],"near_words":6,"max_clauses":3,"keep_share":50,"heading_words":8,"heading_verbs":["shall","must","will","should"],"label_chars":80,"properties":[{"name":"panel thickness","terms":["panel thickness","casing thickness","panel","casing","skin","wall thickness"],"direction":"higher","unit":"length","scale":[]},{"name":"insulation thickness","terms":["insulation","insulated","foam","polyurethane","mineral wool","rock wool"],"direction":"higher","unit":"length","scale":[]},{"name":"sheet or tube thickness","terms":["gauge","sheet thickness","tube thickness","fin thickness","wall of tube"],"direction":"higher","unit":"length","scale":[]},{"name":"density","terms":["density"],"direction":"higher","unit":"","scale":[]},{"name":"thermal transmittance (U value)","terms":["u value","u-value","thermal transmittance","thermal conductance","conductance","w/m2k","w/m²k"],"direction":"lower","unit":"u_value","scale":[]},{"name":"pressure drop","terms":["pressure drop","pressure loss","air side resistance","resistance"],"direction":"lower","unit":"pressure","scale":[]},{"name":"air leakage","terms":["leakage","leak","air tightness"],"direction":"lower","unit":"","scale":[]},{"name":"sound level","terms":["sound power","sound pressure","sound level","noise","acoustic level"],"direction":"lower","unit":"","scale":[]},{"name":"air velocity","terms":["face velocity","velocity","air speed"],"direction":"lower","unit":"velocity","scale":[]},{"name":"specific fan power","terms":["specific fan power","sfp"],"direction":"lower","unit":"","scale":[]},{"name":"efficiency","terms":["efficiency","efficient","cop","eer","iplv","nplv","seer"],"direction":"higher","unit":"","scale":[]},{"name":"capacity","terms":["capacity","cooling capacity","heating capacity","duty"],"direction":"higher","unit":"power","scale":[]},{"name":"air flow","terms":["air flow","airflow","air volume","flow rate"],"direction":"higher","unit":"flow","scale":[]},{"name":"motor power","terms":["absorbed power","power input","power consumption","motor power"],"direction":"lower","unit":"power","scale":[]},{"name":"warranty","terms":["warranty","guarantee"],"direction":"higher","unit":"time","scale":[]},{"name":"electrical supply","terms":["voltage","power supply","electrical supply","phase","volt"],"direction":"exact","unit":"","scale":[]},{"name":"connection size","terms":["connection size","connection","nozzle","flange size"],"direction":"exact","unit":"length","scale":[]},{"name":"thermal bridging class (EN 1886)","terms":["thermal bridging","thermal bridge","tb class","tb"],"direction":"higher","unit":"","scale":["TB5","TB4","TB3","TB2","TB1"]},{"name":"thermal transmittance class (EN 1886)","terms":["thermal transmittance class","transmittance class","thermal transmittance","thermal transmit","t class"],"direction":"higher","unit":"","scale":["T5","T4","T3","T2","T1"]},{"name":"casing strength class (EN 1886)","terms":["mechanical strength","casing strength","deflection","d class"],"direction":"higher","unit":"","scale":["D3","D2","D1"]},{"name":"casing leakage class (EN 1886)","terms":["casing leakage","casing air leakage","air leakage class","leakage class","l class"],"direction":"higher","unit":"","scale":["L3","L2","L1"]},{"name":"filter class (EN 779)","terms":["filter class","filtration","filter","filters"],"direction":"higher","unit":"","scale":["G1","G2","G3","G4","M5","M6","F7","F8","F9","E10","E11","E12","H10","H11","H12","H13","H14","U15","U16","U17"]}],"figure_words":8,"option_values":40,"candidates_shown":12,"choose_listed":3}'::jsonb;      -- assets/pr-settings.js, PRSettings.DEFAULTS: keep equal when the built-in values change
+  select count(*) into n from jsonb_each(v) e where projects.settings_check(e.key, e.value) <> '';
+  if n <> 0 then raise exception 'built-in values refused: %', (select string_agg(e.key || ': ' || projects.settings_check(e.key, e.value), '; ') from jsonb_each(v) e where projects.settings_check(e.key, e.value) <> ''); end if;
+  if jsonb_typeof(v) <> 'object' or (select count(*) from jsonb_object_keys(v)) <> 15 then raise exception 'built-in keys: %', (select count(*) from jsonb_object_keys(v)); end if;
+  perform pg_temp.act_as('demo_user');           -- the tile, no right
+  select public.projects_settings_get() into v;
+  if jsonb_array_length(v -> 'settings') <> 0 or (v ->> 'can_review')::boolean then raise exception 'settings_get for a user: %', v; end if;
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"max_clauses": 2}''::jsonb)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_settings_history(10)', 'NO_RIGHT');
+  reset role;
+  perform pg_temp.act_as('demo_admin');          -- tile admin: holds 'review'
+  select public.projects_settings_get() into v;
+  if not (v ->> 'can_review')::boolean then raise exception 'admin can review'; end if;
+  select public.projects_settings_save('{"max_clauses": 2, "parts": [2], "topics": [{"id": "filter", "words": ["filter*", "hepa"]}, {"id": "wheel", "words": ["plate wheel", "heat wheel*"]}]}'::jsonb) into v;
+  if (v -> 'changed') <> '["max_clauses", "parts", "topics"]'::jsonb then raise exception 'save changed: %', v; end if;
+  select public.projects_settings_save('{"max_clauses": 2}'::jsonb) into v;          -- the same value: no change, no history line
+  if jsonb_array_length(v -> 'changed') <> 0 then raise exception 'equal value is no change'; end if;
+  select public.projects_settings_save('{"max_clauses": 4, "parts": null}'::jsonb) into v;      -- null = back to the built-in value
+  if (v -> 'changed') <> '["max_clauses", "parts"]'::jsonb then raise exception 'save 2: %', v; end if;
+  select public.projects_settings_save('{"parts": null}'::jsonb) into v;              -- already built-in: nothing to do
+  if jsonb_array_length(v -> 'changed') <> 0 then raise exception 'reset twice'; end if;
+  select public.projects_settings_history(10) into v;
+  if jsonb_array_length(v) <> 5 or (v -> 0 ->> 'key') not in ('max_clauses', 'parts') or (v -> 0 ->> 'by') <> 'demo_admin' then raise exception 'history: %', v; end if;
+  if (select count(*) from jsonb_array_elements(v) h where h.value ->> 'key' = 'parts' and h.value -> 'new' = 'null'::jsonb and h.value -> 'old' = '[2]'::jsonb) <> 1 then raise exception 'history reset line'; end if;
+  -- refused: unknown key, wrong shapes, out of range, nothing at all; nothing is saved when one value is wrong
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"colour": 1}''::jsonb)', 'INVALID:colour');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"colour": null}''::jsonb)', 'INVALID:colour');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"max_clauses": 0}''::jsonb)', 'INVALID:max_clauses');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"max_clauses": 2.5}''::jsonb)', 'INVALID:max_clauses');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"keep_share": "50"}''::jsonb)', 'INVALID:keep_share');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"parts": [2, 2]}''::jsonb)', 'INVALID:parts');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"parts": []}''::jsonb)', 'INVALID:parts');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"topics": [{"id": "Filter", "words": ["filter"]}]}''::jsonb)', 'INVALID:topics');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"topics": [{"id": "filter", "words": ["fil*ter"]}]}''::jsonb)', 'INVALID:topics');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"topics": [{"id": "a", "words": ["x"]}, {"id": "a", "words": ["y"]}]}''::jsonb)', 'INVALID:topics');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"section_topics": [{"section": "Unit Data", "how": "is", "topics": ["casing"]}]}''::jsonb)', 'INVALID:section_topics');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"section_topics": [{"section": "unit data", "how": "like", "topics": ["casing"]}]}''::jsonb)', 'INVALID:section_topics');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"heading_verbs": ["shall not"]}''::jsonb)', 'INVALID:heading_verbs');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"properties": [{"name": "fin spacing", "terms": ["fin spacing"], "direction": "up", "unit": "", "scale": []}]}''::jsonb)', 'INVALID:properties');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"properties": [{"name": "fin spacing", "terms": ["Fin Spacing"], "direction": "lower", "unit": "", "scale": []}]}''::jsonb)', 'INVALID:properties');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"properties": [{"name": "x", "terms": ["x"], "direction": "lower", "unit": "smell", "scale": []}]}''::jsonb)', 'INVALID:properties');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"properties": [{"name": "x", "terms": ["x"], "direction": "lower", "unit": "", "scale": ["ePM1 50%"]}]}''::jsonb)', 'INVALID:properties');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{"max_clauses": 5, "near_words": 99}''::jsonb)', 'INVALID:near_words');
+  perform pg_temp.expect_error('select public.projects_settings_save(''{}''::jsonb)', 'INVALID:values');
+  perform pg_temp.expect_error('select public.projects_settings_save(''[1]''::jsonb)', 'INVALID:values');
+  perform pg_temp.expect_error('select public.projects_settings_save(null)', 'INVALID:values');
+  select public.projects_settings_save('{"properties": [{"name": "fin spacing", "terms": ["fin spacing", "fpi"], "direction": "lower", "unit": "length", "scale": []}]}'::jsonb) into v;
+  reset role;
+  if (select value from projects.settings where key = 'max_clauses') <> '4'::jsonb then raise exception 'a refused save changed nothing'; end if;
+  perform pg_temp.act_as('demo_user');           -- the user reads what the reviewers saved (the record uses it)
+  select public.projects_settings_get() into v;
+  if (select count(*) from jsonb_array_elements(v -> 'settings')) <> 3
+     or (select s.value -> 'updated_by_name' from jsonb_array_elements(v -> 'settings') s where s.value ->> 'key' = 'max_clauses') <> '"demo_admin"' then raise exception 'user reads settings: %', v; end if;
   reset role;
 
   -- tile switched off: refused for everyone but the super user

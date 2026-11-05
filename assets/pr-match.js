@@ -18,6 +18,7 @@
    Values     = from every saved datasheet table of the product (Api.prNoteGet). A row
                 is tied to its value by the row key saved with the table, or by section
                 and component name for tables saved before keys were kept.
+   Settings   = the Matching rules page (PRSettings.load, pr-settings.js loaded before cm-rows.js).
    Used by compare.html, record.html and the project Excel (project.html). Brought over from Thinkneering 2026-11-05;
    the result also carries the rules, which pr-picks.js reads for the Product Options picks.
    ============================================================ */
@@ -82,8 +83,10 @@
         : Promise.all(runs.map(function (r) { return Api.prRunGet(t, r.id); })).then(function (got) {
             var rows = []; got.forEach(function (g) { (g.lines || []).forEach(function (l) { rows.push({ type: l.type, sr: l.sr, spec: l.spec }); }); }); return rows;
           });
+      // the Matching rules (pr-settings.js) are handed to the matcher before it runs; without them the built-in values hold
+      var settings = window.PRSettings ? window.PRSettings.load() : Promise.resolve(null);
       return Promise.all([Api.dnRules(t, o.productId).then(function (r) { return (r && r.rules) || []; }, function () { return []; }), spec,
-        Promise.all(notes.map(function (n) { return Api.prNoteGet(t, n.id); }))]).then(function (got) {
+        Promise.all(notes.map(function (n) { return Api.prNoteGet(t, n.id); })), settings]).then(function (got) {
         var rules = got[0], specRows = got[1], tables = got[2], columns = [], factory = '';
         tables.forEach(function (n) { var f = factoryOf(n.rows); if (f) factory = f; });      // the newest table names it
         var entries = unitLookup(tables, columns), s = '', table = [];

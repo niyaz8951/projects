@@ -36,6 +36,10 @@
     {
       "name": "009_open_edit",
       "path": "db/projects/009_open_edit.sql"
+    },
+    {
+      "name": "010_matching_rules",
+      "path": "db/projects/010_matching_rules.sql"
     }
   ]
 }
