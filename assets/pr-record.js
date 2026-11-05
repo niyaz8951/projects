@@ -302,7 +302,11 @@
     function check() {
       var parts = splitParts(box.value), same = plainText(box.value) === plainText(l.spec);
       go.disabled = !same || parts.length < 2;
-      note.textContent = !same ? "The words were changed. Only add line breaks; press Reset to start again." : parts.length < 2 ? "Press Enter where a new row should start." : "This makes " + parts.length + " rows.";
+      // what each new row becomes, so a heading is seen as a heading before the split is saved
+      var kinds = parts.slice(1).map(function (p) {
+        return p.type === "part" ? "a PART band" : p.type === "section" ? "heading " + p.sr : p.sr && p.sr !== "•" ? "clause " + p.sr : "a clause";
+      });
+      note.textContent = !same ? "The words were changed. Only add line breaks; press Reset to start again." : parts.length < 2 ? "Press Enter where a new row should start." : "This makes " + parts.length + " rows. New: " + kinds.join(", ") + ".";
       note.style.color = same ? "" : "var(--danger)";
     }
     box.addEventListener("input", check);

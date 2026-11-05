@@ -83,7 +83,8 @@
     var first = m[2].trim().split(/\s+/)[0] || '';
     if (/^0\./.test(m[1])) return null;
     if (first && /^[a-z]/.test(first) && RE_UNIT.test(first)) return null;        // "2.5 kW heater" at the start of a wrapped line
-    if (first && !/^[A-Z][A-Za-z,&'’\-]*[:.]?$/.test(first)) {
+    // "OUTSIDE/RETURN AIR" and "Heating/Cooling" are titles; "L/S" and "W/m2" after a number are units
+    if (first && !/^[A-Z][A-Za-z,&'’\-]*(\/[A-Za-z][A-Za-z,&'’\-]+)*[:.]?$/.test(first)) {
       if (/^\d{1,2}\.\d{2}$/.test(m[1]) || !/^[A-Za-z]/.test(first)) return null;
     }
     return m;
