@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en" data-loading>
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cykpvtekrdfmqimtrcps.supabase.co; connect-src 'self' https://cykpvtekrdfmqimtrcps.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compliance review - DAME HUB</title>
+<link rel="stylesheet" href="/dame-hub/core/v1/theme.css">
+<link rel="stylesheet" href="/projects/assets/pr.css">
+<link rel="stylesheet" href="/projects/assets/pr-legacy.css">
+<link rel="icon" href="/dame-hub/core/v1/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/dame-hub/core/v1/icons/apple-touch-icon.png">
+<script src="/dame-hub/core/v1/config.js" defer></script>
+<script src="/dame-hub/core/v1/api.js" defer></script>
+<script src="/dame-hub/core/v1/core.js" defer></script>
+<script src="/projects/assets/pr-common.js" defer></script>
+<script src="/projects/assets/pr-hub.js" defer></script>
+<script src="/projects/assets/xlsx-lite.js" defer></script>
+<script src="/projects/assets/xlsx-writer.js" defer></script>
+<script src="/projects/assets/pr-xlsx.js" defer></script>
+<script src="/projects/assets/cm-highlight.js" defer></script>
+<script src="/projects/assets/cm-focus.js" defer></script>
+<script src="/projects/assets/cm-product-check.js" defer></script>
+<script src="/projects/assets/pr-product-detect.js" defer></script>
+<script src="/projects/assets/pr-library.js" defer></script>
+</head>
+<body class="pr-legacy">
+<header id="topbar"></header>
+<main class="page wide">
+  <div class="page-head">
+    <p class="small"><a id="back" href="/projects/">&larr; Projects</a></p>
+    <h1>Compliance review</h1>
+    <p>The factory library: answer a clause once here and every later specification that has it comes answered (green on the record). What users answered in their projects shows under the clause, with their name and project code; nothing reaches the library until you take it.</p>
+  </div>
+
+  <div class="card stack">
+    <div class="scope">
+      <label class="field"><span>Product</span><select class="input" id="product"></select></label>
+      <label class="field"><span>Factory</span><select class="input" id="factory"></select></label>
+    </div>
+    <div class="stats" id="stats" hidden>
+      <div class="stat"><b id="sAll">0</b><span>clauses in this library</span></div>
+      <div class="stat"><b id="sOpen">0</b><span>still to answer</span></div>
+      <div class="stat"><b id="sDone">0</b><span>answered by the library</span><div class="bar"><i id="sBar"></i></div></div>
+      <div class="stat"><b id="sReview">0</b><span>users' answers to review</span></div>
+    </div>
+  </div>
+
+  <div id="work" class="lib-work" hidden>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="lines" aria-selected="true">Lines</button>
+      <button class="tab" role="tab" data-tab="upload" aria-selected="false">Upload filled compliance</button>
+      <button class="tab" role="tab" data-tab="runs" aria-selected="false">Conversion history</button>
+    </div>
+
+    <!-- LINES -->
+    <section id="tab-lines" class="stack">
+      <!-- the work bar: stays under the top bar, slides away while reading down, comes back on the way up -->
+      <div class="workbar" id="workbar">
+        <select class="input" id="fStatus" aria-label="Show">
+          <option value="open">To answer</option><option value="answered">Answered</option><option value="review">Filled by users, to review</option><option value="all">All lines</option>
+        </select>
+        <input class="input grow" id="fSearch" type="search" placeholder="Search clause text" aria-label="Search clause text">
+        <button class="btn ghost lib-filter-btn" type="button" id="btnFilters" aria-expanded="false" aria-controls="libFilters">Filters</button>
+        <span class="lib-filters" id="libFilters">
+          <select class="input" id="fPart" aria-label="Part of the specification"><option value="">All parts</option></select>
+          <select class="input" id="fTopic" aria-label="Topic"><option value="">All topics</option></select>
+          <select class="input" id="fClientType" aria-label="Client type"><option value="">All client types</option></select>
+          <select class="input" id="fClient" aria-label="Client name"><option value="">All clients</option></select>
+          <select class="input" id="fCode" aria-label="Project code"><option value="">All projects</option></select>
+        </span>
+        <button class="btn dock-hide" type="button" id="btnFocus">Focus mode</button>
+        <div class="tabs mode-seg" id="modeSeg" role="group" aria-label="Read or edit"><button type="button" class="tab" data-mode="read" aria-selected="true">Read</button><button type="button" class="tab" data-mode="edit" aria-selected="false">Edit</button></div>
+        <span class="more-items"><button class="btn ghost" type="button" id="btnExport">Download library (Excel)</button></span>
+        <button class="btn ghost more-btn" type="button" id="btnMore">More</button>
+      </div>
+      <div class="table-wrap sheet-wrap">
+        <table class="table sheet lib">
+          <thead><tr><th class="w-sr">Sr</th><th>Specifications</th><th class="w-c">Compliance</th><th class="w-r">Remarks</th><th class="w-ic">Internal Comments</th><th class="w-by">Filled by</th><th class="w-end"></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <span class="small muted" id="pageInfo"></span>
+        <span class="row"><button class="btn ghost sm" type="button" id="prev">Previous</button><button class="btn ghost sm" type="button" id="next">Next</button></span>
+      </div>
+      <p class="small muted" id="modeNote"></p>
+      <datalist id="answers">
+        <option value="Comply"></option><option value="Not Comply"></option><option value="Comply with Remarks"></option>
+        <option value="Noted"></option><option value="Not Applicable"></option><option value="In Contractor's Scope"></option>
+      </datalist>
+    </section>
+
+    <!-- UPLOAD -->
+    <section id="tab-upload" class="stack" hidden>
+      <div class="card stack">
+        <h2>Upload a filled compliance</h2>
+        <p class="muted">Use an Excel file with the columns <b>Sr</b>, <b>Specifications</b>, <b>Compliance</b>, <b>Remarks</b> and <b>Internal Comments</b>, the same for every product: a PART row, then each section with its number in Sr, then its clauses. <a href="#" id="sample">Download the sample file</a>. A sheet downloaded from the Compliance Maker or from this library and filled in works too. Rows with an answer are added to the library for <b id="upScope"></b>; each clause is kept once. A clause that already has an answer in the library gets this file's answer instead; the preview says how many before you add.</p>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose an Excel file or drop one here">
+          <b>Choose an .xlsx file or drop it here</b>
+          <div class="small muted">Nothing is saved until you press Add to library.</div>
+        </div>
+        <input type="file" id="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+        <div id="upMsg" class="notice" hidden></div>
+        <div id="upPreview" class="stack" hidden>
+          <div class="result">
+            <div class="stat"><b id="pRows">0</b><span>rows read</span></div>
+            <div class="stat"><b id="pAns">0</b><span>with an answer or a comment</span></div>
+            <div class="stat"><b id="pSkip">0</b><span>empty (ignored)</span></div>
+          </div>
+          <div class="table-wrap"><table class="table"><thead><tr><th>Sr</th><th>Specification</th><th>Compliance</th><th>Remarks</th><th>Internal Comments</th></tr></thead><tbody id="pRowsBody"></tbody></table></div>
+          <p class="small muted" id="pMore"></p>
+          <div id="pReplace" class="notice" role="status" hidden></div>
+          <div class="row"><button class="btn" type="button" id="btnImport">Add to library</button><button class="btn ghost" type="button" id="btnCancel">Cancel</button></div>
+        </div>
+        <div id="upResult" class="stack" hidden>
+          <div class="notice ok" id="upResultMsg"></div>
+          <div class="result">
+            <div class="stat"><b id="rAdded">0</b><span>new lines</span></div>
+            <div class="stat"><b id="rUpdated">0</b><span>open lines answered</span></div>
+            <div class="stat"><b id="rKept">0</b><span>existing answers replaced</span></div>
+            <div class="stat"><b id="rSame">0</b><span>already the same</span></div>
+            <div class="stat"><b id="rSkipped">0</b><span>rows skipped</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RUNS -->
+    <section id="tab-runs" class="stack" hidden>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>When</th><th>Who</th><th>Product</th><th>Factory</th><th>Source</th><th>Rows</th><th>Unique lines</th><th>Filled from library</th></tr></thead>
+          <tbody id="runRows"></tbody>
+        </table>
+      </div>
+      <p class="small muted" id="runInfo"></p>
+      <!-- super user: clean the library of the product and factory chosen above, with its history (cm_reset_library) -->
+      <div class="card stack clean-card" id="cleanCard" hidden>
+        <h2>Clean this library and its history</h2>
+        <p class="muted small" id="cleanWhat">Choose a product and a factory above.</p>
+        <p class="small">Clears every answer and Internal Comment of the library, its answer history and its conversion and upload history, and removes every clause no project uses. It cannot be undone: download the library first if you may need it.</p>
+        <label class="check"><input type="checkbox" id="cleanProjects"> Also delete the specifications of this product and factory saved in projects, with the answers users typed on them</label>
+        <p class="hint">Without the tick, specifications saved in projects stay and still open; their answers go back to "waiting for review".</p>
+        <div class="row"><button type="button" class="btn danger" id="cleanGo" disabled>Clean this library</button></div>
+        <div class="notice" id="cleanMsg" role="status" hidden></div>
+      </div>
+    </section>
+
+
+  </div>
+</main>
+</body>
+</html>

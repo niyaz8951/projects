@@ -188,12 +188,15 @@
 
   /* ---------- the old API names, as calls to the tile's functions (the first argument was the old token) ---------- */
   var SAYS = {
-    'INVALID:check': 'The rows of this record were changed since you opened it. Reload the page; nothing was saved on this row.',
+    'INVALID:check': 'The rows were changed since this page was opened. Reload the page; nothing was saved.',
     'INVALID:join': 'This row cannot be joined that way: a PART row is never joined, a heading cannot keep an answer, and two rows together cannot be longer than 6000 characters.',
     'INVALID:rows': 'The rows could not be saved: the words must stay the same (only line breaks are added), each row needs text, and a record holds at most 8000 rows.',
     'INVALID:lines': 'There are no lines to save, or more than 8000.',
     'INVALID:factory_id': 'Choose a product and factory first.',
-    'INVALID:seq': 'That row cannot be answered. Reload the page.'
+    'INVALID:seq': 'That row cannot be answered. Reload the page.',
+    'INVALID:answered': 'The library already has an answer for this clause, so it was kept. Change it in the Compliance and Remarks boxes if it needs correcting.',
+    'INVALID:answer': 'An approved answer cannot be empty.',
+    'INVALID:decision': 'Unknown decision.'
   };
   function rpc(name, params) {
     return core.rpc(name, params).then(null, function (err) {
@@ -217,6 +220,21 @@
   core.prDeleteRecord = function (t, kind, id) { return rpc(kind === 'note' ? 'projects_note_delete' : 'projects_run_delete', { p_id: kind === 'note' ? id : undefined, p_run_id: kind === 'note' ? undefined : id }); };
   core.prExport = function (t, id) { return rpc('projects_export', { p_id: id }); };
   core.poApproved = function (t, factoryId) { return rpc('projects_po_approved', { p_factory_id: factoryId }); };
+  /* Compliance review (step 4) */
+  core.cmAdminLines = function (t, d) {
+    return rpc('projects_lib_lines', { p_factory_id: d.factoryId, p_status: d.status || 'open', p_search: d.search || '', p_part: d.part === '' || d.part == null ? null : +d.part,
+      p_topic: d.topic || '', p_client_type: d.clientType || '', p_client_name: d.clientName || '', p_project_code: d.projectCode || '', p_limit: d.limit || 100, p_offset: d.offset || 0 });
+  };
+  core.cmAdminSaveAnswer = function (t, id, c, r, comments) { return rpc('projects_lib_save_answer', { p_line_id: id, p_compliance: c, p_remarks: r, p_comments: comments == null ? null : comments }); };
+  core.cmAdminDeleteLine = function (t, id) { return rpc('projects_lib_delete_line', { p_line_id: id }); };
+  core.cmResetLibrary = function (t, d) { return rpc('projects_lib_reset', { p_product_id: d.productId, p_factory_id: d.factoryId || null, p_with_projects: !!d.withProjects }); };
+  core.cmAdminImport = function (t, d) { return rpc('projects_lib_import', { p_factory_id: d.factoryId, p_file_name: d.fileName || '', p_rows: d.rows }); };
+  core.cmAdminRuns = function (t, d) { return rpc('projects_lib_runs', { p_limit: (d && d.limit) || 50, p_offset: (d && d.offset) || 0 }); };
+  core.cmAdminExport = function (t, factoryId, projectCode) { return rpc('projects_lib_export', { p_factory_id: factoryId, p_project_code: projectCode || '' }); };
+  core.prReviewDecide = function (t, d) {
+    return rpc('projects_review_decide', { p_run_id: d.run, p_seq: d.seq, p_decision: d.decision, p_line_id: d.lineId || null,
+      p_compliance: d.compliance == null ? null : d.compliance, p_remarks: d.remarks == null ? null : d.remarks });
+  };
 
   /* The old error messages are plain codes now: the pages show Api.errorMessage; an error object keeps .message. */
   /* The Product Options panel of a row (pr-options.js) comes with step 5; until then its name opens a note. */

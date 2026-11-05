@@ -1,4 +1,4 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 006. Rolled back.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 007. Rolled back.
 -- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
 -- demo_user with 'edit') and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
@@ -39,7 +39,7 @@ end $$;
 grant execute on function pg_temp.act_as(text), pg_temp.expect_error(text, text) to public;
 
 do $$
-declare v jsonb; n int; v_n2 int; v_id uuid; v_note uuid; v_run uuid; v_run2 uuid; v_code text; v_year text := to_char(now(), 'YYYY');
+declare v jsonb; n int; v_n2 int; v_id uuid; v_note uuid; v_run uuid; v_run2 uuid; v_line uuid; v_code text; v_year text := to_char(now(), 'YYYY');
 begin
   -- signed out: nothing
   perform pg_temp.act_as(null);
@@ -341,6 +341,107 @@ begin
   perform pg_temp.expect_error(format('select public.projects_run_save(%L, ''ahu-riyadh'', ''pdf'', ''x'', ''[{"type":"text","spec":"x"}]''::jsonb)', v_id), 'NO_RIGHT');
   reset role;
   update core.tile_access set rights = array['edit'] where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
+
+  -- compliance review (007): the library for reviewers; an approved answer becomes the library's and pre-fills the record
+  perform pg_temp.act_as('demo_user');                       -- 'edit' only: no review right
+  perform pg_temp.expect_error('select public.projects_lib_lines(''ahu-riyadh'')', 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_review_decide(%L, 2, ''approve'')', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_lib_import(''ahu-riyadh'', ''x.xlsx'', ''[{}]''::jsonb)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_lib_export(''ahu-riyadh'')', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_lib_runs()', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_lib_reset(''ahu'')', 'NO_RIGHT');
+  reset role;
+  perform pg_temp.act_as('demo_admin');                      -- tile admin: holds 'review'
+  perform pg_temp.expect_error('select public.projects_lib_lines(''ahu-nowhere'')', 'INVALID:factory_id');
+  select public.projects_lib_lines('ahu-riyadh', 'review') into v;
+  if (v -> 'counts' ->> 'all')::int <> 4 or (v -> 'counts' ->> 'open')::int <> 4 or (v -> 'counts' ->> 'review')::int <> 1 then raise exception 'lib counts: %', v -> 'counts'; end if;
+  if (v ->> 'total')::int <> 1 or (v -> 'lines' -> 0 -> 'project_answers' -> 0 ->> 'review') <> 'pending' or (v -> 'lines' -> 0 -> 'project_answers' -> 0 ->> 'code') <> v_code
+     or (v -> 'lines' -> 0 -> 'project_answers' -> 0 ->> 'by') <> 'demo_user' then raise exception 'lib review lines: %', v -> 'lines'; end if;
+  v_line := (v -> 'lines' -> 0 ->> 'id')::uuid;
+  select public.projects_lib_lines('ahu-riyadh', 'all') into v;
+  if (v ->> 'total')::int <> 4 or (v -> 'lines' -> 0 ->> 'part')::int <> 2 or (v -> 'lines' -> 0 ->> 'topic') <> 'Casing and base' then raise exception 'lib all / order: %', v -> 'lines' -> 0; end if;
+  if jsonb_array_length(v -> 'project_codes') <> 1 or jsonb_array_length(v -> 'groups') < 2 then raise exception 'lib lists: % %', v -> 'project_codes', v -> 'groups'; end if;
+  select public.projects_lib_lines('ahu-riyadh', 'all', '', null, '', '', '', v_code) into v;
+  if (v ->> 'total')::int <> 3 then raise exception 'lib by project code: %', v ->> 'total'; end if;
+  select public.projects_lib_lines('ahu-riyadh', 'all', '', null, 'Filters') into v;
+  if (v ->> 'total')::int <> 1 then raise exception 'lib by topic'; end if;
+  select public.projects_lib_lines('ahu-riyadh', 'all', 'inner skin') into v;
+  if (v ->> 'total')::int <> 1 then raise exception 'lib search'; end if;
+  select public.projects_lib_lines('ahu-riyadh', 'all', '', 2, '', 'Consultant') into v;      -- the client type of the project changed to Contractor earlier
+  if (v ->> 'total')::int <> 0 then raise exception 'lib client type'; end if;
+  -- decide: the line the reviewer saw must still be the row's; approve; the record then shows the library answer (green)
+  perform pg_temp.expect_error(format('select public.projects_review_decide(%L, 2, ''approve'', %L)', v_run, gen_random_uuid()), 'INVALID:check');
+  perform pg_temp.expect_error(format('select public.projects_review_decide(%L, 2, ''maybe'')', v_run), 'INVALID:decision');
+  perform pg_temp.expect_error(format('select public.projects_review_decide(%L, 3, ''approve'')', v_run), 'NOT_FOUND');      -- nothing waiting there
+  perform public.projects_review_decide(v_run, 2, 'approve', v_line);
+  select public.projects_lib_lines('ahu-riyadh', 'answered') into v;
+  if (v ->> 'total')::int <> 1 or (v -> 'lines' -> 0 ->> 'compliance') <> 'Comply' or (v -> 'lines' -> 0 ->> 'answer_source') <> 'approved' then raise exception 'approved into library: %', v -> 'lines'; end if;
+  if (v -> 'counts' ->> 'review')::int <> 0 then raise exception 'nothing left to review'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_user');
+  select public.projects_run_get(v_run) into v;
+  if (v -> 'lines' -> 2 ->> 'review') <> 'approved' then raise exception 'row approved: %', v -> 'lines' -> 2; end if;
+  if (v -> 'lines' -> 5 ->> 'lib_compliance') <> 'Comply' or (v -> 'lines' -> 5 ->> 'own')::boolean then raise exception 'green pre-fill on the repeated clause: %', v -> 'lines' -> 5; end if;
+  select public.projects_run_save_line(v_run, 5, 'Comply', '', null) into v;
+  if (v ->> 'review') <> '' then raise exception 'equal to the library needs no review'; end if;
+  select public.projects_run_save_line(v_run, 5, 'Not Comply', 'other', null) into v;              -- differs from the library: waits
+  if (v ->> 'review') <> 'pending' then raise exception 'differs: pending'; end if;
+  select public.projects_run_save_line(v_run, 7, 'Comply with Remarks', 'G4 washable', null) into v;
+  select public.projects_get(v_id) into v;
+  if (select (x ->> 'approved')::int from jsonb_array_elements(v -> 'runs') x) <> 1 then raise exception 'project page approved count'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_admin');
+  -- a library line that already has another answer is never overwritten from a project
+  perform pg_temp.expect_error(format('select public.projects_review_decide(%L, 5, ''approve'')', v_run), 'INVALID:answered');
+  perform public.projects_review_decide(v_run, 5, 'reject');
+  -- approved as corrected here
+  perform public.projects_review_decide(v_run, 7, 'approve', null, 'Comply', '');
+  select public.projects_lib_lines('ahu-riyadh', 'all', 'pre filters') into v;
+  if (v -> 'lines' -> 0 ->> 'compliance') <> 'Comply' or (v -> 'lines' -> 0 ->> 'remarks') <> '' then raise exception 'approved as corrected: %', v -> 'lines' -> 0; end if;
+  select public.projects_get(v_id) into v;
+  if (v -> 'events' -> 0 ->> 'action') <> 'answer approved for the library' or (v -> 'events' -> 1 ->> 'action') <> 'answer not taken into the library' then raise exception 'review events: %', v -> 'events' -> 0; end if;
+  -- the reviewer's own answers and Internal Comments
+  select (x ->> 'id')::uuid into v_line from jsonb_array_elements((public.projects_lib_lines('ahu-riyadh', 'open')) -> 'lines') x where x ->> 'spec_text' like 'Inner skin%';
+  select public.projects_lib_save_answer(v_line, 'Comply with Remarks', 'Galvanised 0.7 mm', 'note for users # for reviewers') into v;
+  if (v ->> 'status') <> 'answered' then raise exception 'lib_save_answer'; end if;
+  select public.projects_lib_save_answer(v_line, '', '', null) into v;
+  if (v ->> 'status') <> 'open' then raise exception 'lib_save_answer clears'; end if;
+  perform pg_temp.expect_error(format('select public.projects_lib_save_answer(%L, ''Comply'', '''')', gen_random_uuid()), 'NOT_FOUND');
+  -- upload a filled library (invented clauses): standard words, last row wins, short rows skipped, replaced counted
+  select public.projects_lib_import('ahu-riyadh', 'library.xlsx', '[
+    {"spec":"Units shall be shipped on a base frame with lifting holes.","compliance":"by contractor","remarks":"","sr":"A","type":"letter","part":"1","section":"DELIVERY","section_sr":"1.5"},
+    {"spec":"Units shall be shipped on a base frame with lifting holes.","compliance":"Complied","remarks":"","sr":"A","type":"letter","part":"1","section":"DELIVERY","section_sr":"1.5"},
+    {"spec":"Pre filters shall be ISO Coarse 60% (G4) washable type.","compliance":"Comply with Remarks","remarks":"Washable G4","sr":"A"},
+    {"spec":"Short","compliance":"Comply"},
+    {"spec":"A clause with only an internal comment for the users.","compliance":"","remarks":"","comments":"read the IOM"}]'::jsonb) into v;
+  if (v ->> 'added')::int <> 1 or (v ->> 'replaced')::int <> 1 or (v ->> 'skipped')::int <> 3 or (v ->> 'standardised')::int <> 2 then raise exception 'lib_import: %', v; end if;
+  select public.projects_lib_lines('ahu-riyadh', 'all', 'base frame') into v;
+  if (v -> 'lines' -> 0 ->> 'compliance') <> 'Comply' or (v -> 'lines' -> 0 ->> 'part')::int <> 1 or (v -> 'lines' -> 0 ->> 'section') <> 'DELIVERY' then raise exception 'imported line: %', v -> 'lines' -> 0; end if;
+  perform pg_temp.expect_error('select public.projects_lib_import(''ahu-riyadh'', ''x'', ''[]''::jsonb)', 'INVALID:rows');
+  -- export (whole factory, and one project in its order) and the history
+  select public.projects_lib_export('ahu-riyadh') into v;
+  if jsonb_array_length(v -> 'lines') <> 6 or (v -> 'lines' -> 0 ->> 'part')::int <> 1 then raise exception 'lib_export: %', jsonb_array_length(v -> 'lines'); end if;
+  select public.projects_lib_export('ahu-riyadh', lower(v_code)) into v;
+  if jsonb_array_length(v -> 'lines') <> 3 or (v -> 'lines' -> 0 -> 'project_codes' ->> 0) <> v_code then raise exception 'lib_export by code: %', v; end if;
+  select public.projects_lib_runs() into v;
+  if (v ->> 'total')::int <> 3 or not exists (select 1 from jsonb_array_elements(v -> 'runs') x where x ->> 'kind' = 'library-upload' and x ->> 'file_name' = 'library.xlsx') then raise exception 'lib_runs: %', v; end if;
+  -- a junk line leaves the library; the record row that held it can no longer be answered
+  select (x ->> 'id')::uuid into v_line from jsonb_array_elements((public.projects_lib_lines('ahu-riyadh', 'all', 'only an internal comment')) -> 'lines') x;
+  perform public.projects_lib_delete_line(v_line);
+  perform pg_temp.expect_error(format('select public.projects_lib_delete_line(%L)', v_line), 'NOT_FOUND');
+  -- clean a library: the super user only
+  perform pg_temp.expect_error('select public.projects_lib_reset(''ahu'', ''ahu-riyadh'')', 'NO_RIGHT');
+  reset role;
+  update core.profiles set is_super = true where id = (select id from t_ids where k = 'demo_admin');
+  perform pg_temp.act_as('demo_admin');
+  perform pg_temp.expect_error('select public.projects_lib_reset(''boat'')', 'INVALID:product_id');
+  select public.projects_lib_reset('ahu', 'ahu-riyadh', false) into v;
+  if (v ->> 'records_removed')::int <> 0 or (v ->> 'history_removed')::int <> 2 then raise exception 'lib_reset: %', v; end if;
+  select public.projects_lib_lines('ahu-riyadh', 'all') into v;
+  if (v -> 'counts' ->> 'answered')::int <> 0 or (v -> 'counts' ->> 'all')::int <> (v -> 'counts' ->> 'open')::int then raise exception 'reset empties the answers: %', v -> 'counts'; end if;
+  if (v -> 'counts' ->> 'review')::int < 1 then raise exception 'reset sends the users'' answers back to review'; end if;
+  reset role;
+  update core.profiles set is_super = false where id = (select id from t_ids where k = 'demo_admin');
 
   -- sharing (003): only a tile admin or the super user shares; a member sees, opens and edits, cannot share on
   perform pg_temp.act_as('demo_user'); -- creator, not an admin
