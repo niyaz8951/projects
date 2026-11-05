@@ -165,7 +165,7 @@
         '</border>' +                                                                          // 1 thin box
       '</borders>' +
       '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-      '<cellXfs count="21">' +
+      '<cellXfs count="26">' +
         // 0 header
         '<xf fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="center"/></xf>' +
         // 1 part (white on black)
@@ -211,6 +211,12 @@
         // (9) and AI-verified-orange (10); the color itself is a durability
         // signal that survives even if the Comments column gets deleted.
         '<xf fontId="0" fillId="9" borderId="1" applyFill="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        // 21-25 the Compliance column: bold and wrapped, plain / yellow / orange / red / amber like 8, 9, 10, 11, 20
+        '<xf fontId="1" fillId="0" borderId="1" applyFont="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '<xf fontId="1" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '<xf fontId="1" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '<xf fontId="1" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>' +
+        '<xf fontId="1" fillId="9" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf>' +
       '</cellXfs>' +
       '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
     '</styleSheet>';
@@ -233,11 +239,19 @@
     if (style === 'red' || style === true) return '<rPr><color rgb="FFE0432F"/><sz val="11"/><rFont val="Calibri"/></rPr>';
     return '<rPr><sz val="11"/><rFont val="Calibri"/></rPr>';
   }
-  function richStrCell(ref, style, runs) {
-    var body = runs.map(function (run) {
+  // plain: the consultant's copy. The highlighted words go back to black; the lead-in of a clause
+  // ("Product Data:", brown and bold) is the document's own formatting and stays.
+  function richStrCell(ref, style, runs, plain) {
+    var merged = [];
+    runs.forEach(function (run) {
       // Back-compat: older runs used {hl:true}. Map to 'red'.
       var st = run.style != null ? run.style : (run.hl ? 'red' : '');
-      return '<r>' + runProps(st) + '<t' + preserve(run.text) + '>' + esc(run.text) + '</t></r>';
+      if (plain && st !== 'colon') st = '';
+      var last = merged[merged.length - 1];
+      if (last && last.style === st) last.text += run.text; else merged.push({ text: run.text, style: st });
+    });
+    var body = merged.map(function (run) {
+      return '<r>' + runProps(run.style) + '<t' + preserve(run.text) + '>' + esc(run.text) + '</t></r>';
     }).join('');
     return '<c r="' + ref + '" s="' + style + '" t="inlineStr"><is>' + body + '</is></c>';
   }
@@ -406,7 +420,7 @@
       else srStyle = 7;
 
       var runs = splitRuns(r.spec, re);
-      specCell = richStrCell(specRef, 4, runs);
+      specCell = richStrCell(specRef, 4, runs, ext);
 
       // Compliance/Remarks fills: 9 = yellow (library answer), 10 = orange
       // (AI suggestion, verified, still worth checking), 20 = amber
@@ -419,12 +433,14 @@
       } else if (r.auto && (r.compliance || r.remarks)) {
         fillStyle = r.auto.type === 'ai-guess' || (r.auto.type === 'ai' && r.auto.confidence === 'low') ? 20 : (r.auto.type === 'ai' ? 10 : 9);
       }
+      // Compliance bold and wrapped, Remarks wrapped; an empty cell is ready for what is typed in it later
+      var compStyle = { 8: 21, 9: 22, 10: 23, 11: 24, 20: 25 }[fillStyle], remStyle = fillStyle === 8 ? 4 : fillStyle;
       var compCell = r.compliance
-        ? inlineStrCell('D' + rowNum, fillStyle, r.compliance)
-        : emptyCell('D' + rowNum);
+        ? inlineStrCell('D' + rowNum, compStyle, r.compliance)
+        : '<c r="D' + rowNum + '" s="21"/>';
       var remCell = r.remarks
-        ? inlineStrCell('E' + rowNum, fillStyle, r.remarks)
-        : emptyCell('E' + rowNum);
+        ? inlineStrCell('E' + rowNum, remStyle, r.remarks)
+        : '<c r="E' + rowNum + '" s="4"/>';
 
       lines.push(
         '<row r="' + rowNum + '">' +
@@ -459,8 +475,8 @@
           '<col min="1" max="1" width="3" customWidth="1"/>' +
           '<col min="2" max="2" width="10" customWidth="1"/>' +
           '<col min="3" max="3" width="70" customWidth="1"/>' +
-          '<col min="4" max="4" width="14" customWidth="1"/>' +
-          '<col min="5" max="5" width="18" customWidth="1"/>' +
+          '<col min="4" max="4" width="16" customWidth="1"/>' +
+          '<col min="5" max="5" width="40" customWidth="1"/>' +
           '<col min="6" max="6" width="36" customWidth="1"/>' +
         '</cols>' +
         '<sheetData>' + lines.join('') + '</sheetData>' +

@@ -44,6 +44,12 @@
 3. A new conversion of the same specification needs no split.
 4. **Add a specification:** the "Skip the cover and contents pages" box is gone; the cover, revision table and contents are always left out (a line says so). A contents page without dot leaders ("PART 1 GENERAL 1") is also recognised. The note after conversion still says how many lines were skipped.
 
+## Owner, to check (the two Excel files; no SQL)
+1. Hard-refresh a record. *More*: **Download working Excel** comes first, then **Download Excel (final)**.
+2. Working: highlighted words in red, library answers yellow, Comments column, sheet 2 - as before.
+3. Final: every word black, except the brown lead-in ("Product Data:", "Fans:") and the coloured Sr; no fills, no Comments.
+4. Both: Compliance bold and wrapped ("Comply with Remarks" on two lines, not cut off), Remarks wrapped in a wider column; typing into an empty Compliance cell is bold too.
+
 ## Owner, to check 014 (the Compliance pill)
 1. **SQL editor:** `db/projects/013_hints.sql` if not run yet, then `db/projects/014_answer_list.sql`; Admin > Health > Run check now must say Clean, then the Security Advisor.
 2. Hard-refresh. A record in **Edit**: the Compliance is a pill showing the whole answer; a click lists every answer; there is nowhere to type. Enter goes to the next clause. Remarks as before. **Focus mode**: the six pills, no box under them.
