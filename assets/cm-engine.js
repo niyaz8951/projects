@@ -509,10 +509,21 @@
      Nothing after that point is touched. Returns { lines, skipped, why }. */
   var TOC_LINE = /\.{5,}\s*\d*\s*$/;
   var PART_ONE = /^\s*PART\s+(1|I|ONE)\b(?!\s*[0-9IVX])/i;
+  // a contents page without dot leaders ("PART 1 GENERAL 1"): only headings ("1.01 SUMMARY") come before PART 2,
+  // where the real PART 1 has a lettered or numbered clause ("A. The work ...") first
+  var PART_TWO = /^\s*PART\s+(2|II|TWO)\b(?!\s*[0-9IVX.])/i;
+  var CLAUSE_LABEL = /^\s*(\(?[A-Za-z]\)|[A-Z]\.|\d{1,2}\.|\d{1,2}\))\s+\S/;
+  function contentsAt(lines, i) {
+    for (var k = i + 1; k < lines.length && k < i + 400; k++) {
+      if (CLAUSE_LABEL.test(lines[k])) return false;
+      if (PART_TWO.test(lines[k])) return true;
+    }
+    return false;
+  }
   function skipFrontMatter(lines) {
     var i, start = -1, why = '';
     for (i = 0; i < lines.length; i++) {
-      if (PART_ONE.test(lines[i]) && !TOC_LINE.test(lines[i])) { start = i; why = 'before PART 1'; break; }
+      if (PART_ONE.test(lines[i]) && !TOC_LINE.test(lines[i]) && !contentsAt(lines, i)) { start = i; why = 'before PART 1'; break; }
     }
     if (start < 0) {
       var last = -1, count = 0;

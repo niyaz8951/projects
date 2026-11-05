@@ -100,18 +100,18 @@
   $("as-go").addEventListener("click", function () {
     if (busy || !ready()) return;
     busy = true; fail(""); $("as-busy").hidden = false; refresh();
-    var skip = $("as-skip").checked, name = "", work;
-    if (source === "pdf") { name = file.name; work = CMEngine.fromPdf(file, { skipFront: skip, onProgress: status }); }
+    var name = "", work;
+    if (source === "pdf") { name = file.name; work = CMEngine.fromPdf(file, { skipFront: true, onProgress: status }); }
     else {
       status("Sorting the clauses…");
       var raw = $("as-paste").value;
       if (window.TN && window.TN.reflow && window.TN.reflow.tidyForParsing) raw = window.TN.reflow.tidyForParsing(raw).text;   // page lines out, split words rejoined
       name = $("as-title").value.replace(/\s+/g, " ").trim();
-      work = Promise.resolve(CMEngine.fromText(raw, { skipFront: skip }));
+      work = Promise.resolve(CMEngine.fromText(raw, { skipFront: true }));
     }
     work.then(function (res) {
       var clauses = res.rows.filter(function (r) { return r.type === "letter" || r.type === "number" || r.type === "text"; }).length;
-      if (!clauses) throw new Error("No clauses were found. Check that this is the specification text" + (skip ? ", or untick \"Skip the cover and contents pages\"" : "") + ".");
+      if (!clauses) throw new Error("No clauses were found. Check that this is the specification text, not only its cover or contents.");
       status("Saving " + clauses + " clauses in " + project.name + "…");
       var lines = res.rows.map(function (r) { return { type: r.type || "", sr: r.sr || "", spec: r.spec || "" }; });
       function save() {

@@ -42,6 +42,7 @@
 1. Hard-refresh. A heading whose first word has a slash ("2.10 OUTSIDE/RETURN AIR MIXING PLENUM", "2.04 Heating/Cooling Coils") was read as text and glued to the clause above. Now it is a heading, at conversion and at Split. "2.10 L/S of air" and "2.10 W/m2" stay text.
 2. A record converted before this: *Join up* the wrong text row onto the clause, then *Split* it again; the sheet says "New: heading 2.10" before you press Split, and the row comes back as a green heading band.
 3. A new conversion of the same specification needs no split.
+4. **Add a specification:** the "Skip the cover and contents pages" box is gone; the cover, revision table and contents are always left out (a line says so). A contents page without dot leaders ("PART 1 GENERAL 1") is also recognised. The note after conversion still says how many lines were skipped.
 
 ## Owner, to check 014 (the Compliance pill)
 1. **SQL editor:** `db/projects/013_hints.sql` if not run yet, then `db/projects/014_answer_list.sql`; Admin > Health > Run check now must say Clean, then the Security Advisor.
