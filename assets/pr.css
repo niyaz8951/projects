@@ -228,3 +228,12 @@
 .mr-vb-form .field { min-width: 0; }
 .mr-vb-sheet { min-width: min(560px, 86vw); }
 .mr-try-vocab { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+
+/* datasheet work in green, specification work in orange (owner, 2026-11-06): the tool tiles, the Next step buttons and the two
+   cards carry data-accent; the core's accent tokens (day and night) do the colours */
+.pr-kind > h2::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 10px; border-radius: 3px; background: var(--accent-grad); vertical-align: 0.12em; }
+.btn.pr-soft { background: var(--accent-soft); color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 35%, transparent); font-weight: 600; }
+.btn.pr-soft:hover { background: var(--accent-soft); border-color: var(--accent); }
+/* file names are often one long word ("Sample_Units_UAE_2421207_Single_Deck_unit_1890198"): they break anywhere rather than
+   push the page sideways on a phone */
+.pr-table .name, .pr-table a, .pr-log .detail, .pr-log li { overflow-wrap: anywhere; }

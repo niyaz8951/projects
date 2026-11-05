@@ -28,8 +28,10 @@
       runs.forEach(function (r) { clauses += r.clauses || 0; filled += r.filled || 0; pending += r.pending || 0; });
       var open = runs.filter(function (r) { return (r.clauses || 0) > (r.filled || 0); }).sort(function (a, b) { return String(a.created_at).localeCompare(String(b.created_at)); })[0];
       var eyebrow = 'Next step', title, sub, acts = [];
+      // datasheet work in green, specification work in orange (owner, 2026-11-06), the rest in the tile's colour
       function act(text, key, ghost) {
-        acts.push(el('button', { type: 'button', class: 'btn' + (ghost ? '' : ' primary'), text: text, on: { click: function () {
+        var hue = key === 'datasheet' ? 'green' : key === 'spec' || /^record:/.test(key) ? 'orange' : null;
+        acts.push(el('button', { type: 'button', class: 'btn' + (ghost ? (hue ? ' pr-soft' : '') : ' primary'), 'data-accent': hue, text: text, on: { click: function () {
           if (key === 'download') { $('#export').click(); return; }
           if (/^record:/.test(key)) { Core.go('/projects/record.html?run=' + encodeURIComponent(key.slice(7))); return; }
           go(key);
@@ -68,11 +70,11 @@
       var box = Core.clear($('#next-actions')); acts.forEach(function (a) { box.appendChild(a); });
       // on a phone the primary action is docked at the bottom
       var dock = Core.clear($('#dock')); dock.hidden = !acts.length;
-      if (acts.length) dock.appendChild(el('button', { type: 'button', class: 'btn primary block', text: acts[0].textContent, on: { click: function () { acts[0].click(); } } }));
+      if (acts.length) dock.appendChild(el('button', { type: 'button', class: 'btn primary block', 'data-accent': acts[0].getAttribute('data-accent'), text: acts[0].textContent, on: { click: function () { acts[0].click(); } } }));
     }
 
     function toolTile(name, text, icon, n, one, many, key) {
-      return el('a', { class: 'tile pr-tile ' + (n ? 'has' : 'none'), href: key === 'datasheet' ? readSheet : addSpec, 'aria-label': name,
+      return el('a', { class: 'tile pr-tile ' + (n ? 'has' : 'none'), href: key === 'datasheet' ? readSheet : addSpec, 'aria-label': name, 'data-accent': key === 'datasheet' ? 'green' : 'orange',
                        on: { click: function (e) { if (!canEdit) { e.preventDefault(); PR.readOnly(); } } } },
         el('span', { class: 'icon i-' + icon }),
         el('span', null, el('span', { class: 'name', text: name }), el('span', { class: 'tagline', text: text }),
@@ -81,7 +83,7 @@
 
     function emptyState(host, title, text, button, key) {
       Core.clear(host).appendChild(el('div', { class: 'state tight' }, el('h3', { text: title }), el('p', { text: text }),
-        canEdit ? el('button', { type: 'button', class: 'btn', text: button, on: { click: function () { go(key); } } }) : null));
+        canEdit ? el('button', { type: 'button', class: 'btn primary', text: button, on: { click: function () { go(key); } } }) : null));
     }
 
     function bare(names) { return String(names || '').split(', ').map(function (n) { return n.replace(/\.[A-Za-z0-9]{1,5}$/, ''); }).join(', '); }
@@ -96,7 +98,7 @@
         el('td', { 'data-label': 'Size', text: plural(n.units, 'unit', 'units') + ', ' + plural(n.rows, 'row', 'rows') }),
         el('td', { 'data-label': 'By', text: '@' + n.username }),
         el('td', { class: 'act' },
-          el('a', { class: 'btn small', href: view, text: 'View' }),
+          el('a', { class: 'btn small primary', href: view, text: 'View' }),
           el('button', { type: 'button', class: 'btn small ghost', text: 'Download Excel', on: { click: function (e) {
             var b = e.currentTarget; b.disabled = true;
             Api.rpc('projects_note_get', { p_id: n.id }).then(function (t) {
@@ -131,7 +133,7 @@
         el('td', null, badges),
         el('td', { 'data-label': 'By', text: '@' + r.user }),
         el('td', { class: 'act' },
-          el('a', { class: 'btn small', href: open, text: 'Open' }),
+          el('a', { class: 'btn small primary', href: open, text: 'Open' }),
           canEdit ? el('button', { type: 'button', class: 'btn small ghost', text: 'Upload filled Excel', on: { click: function () { uploadFor = r; $('#file').click(); } } }) : null,
           canEdit ? el('button', { type: 'button', class: 'btn small danger', text: 'Remove', on: { click: function () {
             Core.confirm('Its clauses stay in the factory library. The answers you filled for this project go with the record.', { ok: 'Remove', danger: true }).then(function (yes) {
@@ -260,7 +262,7 @@
         var tbody = el('tbody'); notes.forEach(function (n) { tbody.appendChild(noteRow(n)); });
         Core.clear($('#notes')).appendChild(el('div', { class: 'table-wrap' }, el('table', { class: 'pr-table pr-notes' },
           el('thead', null, el('tr', null, el('th', { text: 'Datasheet' }), el('th', { text: 'Product' }), el('th', { text: 'Size' }), el('th', { text: 'By' }), el('th'))), tbody)));
-        if (canEdit) $('#notes').appendChild(el('p', null, el('button', { type: 'button', class: 'btn small', text: 'Read another datasheet', on: { click: function () { go('datasheet'); } } })));
+        if (canEdit) $('#notes').appendChild(el('p', null, el('button', { type: 'button', class: 'btn small pr-soft', text: 'Read another datasheet', on: { click: function () { go('datasheet'); } } })));
       }
       if (!runs.length) emptyState($('#runs'), 'No specification yet', 'Add the PDF or paste the text: the clauses come ready to answer, with what the library already knows.', 'Add a specification', 'spec');
       else {
@@ -273,7 +275,7 @@
         });
         Core.clear($('#runs')).appendChild(el('div', { class: 'table-wrap' }, el('table', { class: 'pr-table pr-notes pr-runs' },
           el('thead', null, el('tr', null, el('th', { text: 'Specification' }), el('th', { text: 'Answered' }), el('th', { text: 'Answers' }), el('th', { text: 'By' }), el('th'))), rbody)));
-        if (canEdit) $('#runs').appendChild(el('p', null, el('button', { type: 'button', class: 'btn small', text: 'Add another specification', on: { click: function () { go('spec'); } } })));
+        if (canEdit) $('#runs').appendChild(el('p', null, el('button', { type: 'button', class: 'btn small pr-soft', text: 'Add another specification', on: { click: function () { go('spec'); } } })));
       }
       // products that have both a specification and a datasheet can be put side by side
       var both = [];

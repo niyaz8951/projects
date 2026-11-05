@@ -61,16 +61,16 @@
     <section aria-labelledby="h-tools" class="pr-section">
       <h2 id="h-tools">Add to this project</h2>
       <div class="tiles" id="tiles"></div>
-      <p class="hint">Read the datasheet first (optional), then add the specification: its clauses are compared with the units' values. Without a datasheet, the clauses get the closest values the factory offers and the working Excel lists what to select. Blue: the project already holds this. Grey: nothing yet.</p>
+      <p class="hint">Read the datasheet first (optional), then add the specification: its clauses are compared with the units' values. Without a datasheet, the clauses get the closest values the factory offers and the working Excel lists what to select. Coloured (green: datasheets, orange: specifications): the project already holds this. Grey: nothing yet.</p>
     </section>
 
-    <section class="card" aria-labelledby="h-notes">
+    <section class="card pr-kind" aria-labelledby="h-notes" data-accent="green">
       <h2 id="h-notes">1. Datasheet notes <span class="muted pr-light">(optional, first)</span></h2>
       <p class="muted">One table per datasheet read. These stay in the project; they are not part of the compliance library.</p>
       <div id="notes"></div>
     </section>
 
-    <section class="card" aria-labelledby="h-runs">
+    <section class="card pr-kind" aria-labelledby="h-runs" data-accent="orange">
       <h2 id="h-runs">2. Compliance records</h2>
       <p class="muted">One record per converted specification, grouped by product. Open a name to read it and fill Compliance and Remarks online, or upload the Excel you filled. Your answers are kept in the project; new ones go to the reviewers for the library.</p>
       <div class="notice" id="up-msg" role="status" aria-live="polite" hidden></div>
