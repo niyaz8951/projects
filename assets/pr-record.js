@@ -483,7 +483,7 @@
     setMode(false, true); counts(); draw(); reviewNote();
     choicesP.then(function (c) { [].forEach.call(document.querySelectorAll("select.answer-pick"), function (s) { if (s.setChoices) s.setChoices(c); }); });   // the admin's list, in place
     Hub.autoHide($("rc-workbar"));
-    Hub.more($("rc-more"), [$("rc-download"), $("rc-download-work")], "This specification");
+    Hub.more($("rc-more"), [$("rc-download-work"), $("rc-download")], "This specification");
     Hub.dock([el("button", { type: "button", "class": "btn", text: "Focus mode", onclick: focusMode })]);
     loadMatch();
     // on a phone the table is hard to fill: start in the full-screen mode, "Done" shows the table

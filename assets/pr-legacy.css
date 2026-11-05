@@ -91,6 +91,9 @@
 .pr-legacy .btn.ghost:hover { background: var(--surface-2); }
 .pr-legacy .btn.danger { background: var(--surface); color: var(--danger); border-color: var(--border); }
 .pr-legacy .btn.danger:hover { background: var(--danger-bg); }
+/* the final copy for the consultant (record page): rose, so it is not taken for the working copy */
+.pr-legacy .btn.ghost.pr-final { background: var(--danger-bg); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); font-weight: 600; }
+.pr-legacy .btn.ghost.pr-final:hover { background: var(--danger); color: var(--on-brand); border-color: var(--danger); }
 .pr-legacy .btn.sm { min-height: 34px; padding: 0 13px; font-size: 13px; border-radius: 9px; }
 .pr-legacy .btn.icon { width: 38px; padding: 0; }
 .pr-legacy .btn svg { width: 18px; height: 18px; }

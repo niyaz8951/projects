@@ -45,7 +45,7 @@
 4. **Add a specification:** the "Skip the cover and contents pages" box is gone; the cover, revision table and contents are always left out (a line says so). A contents page without dot leaders ("PART 1 GENERAL 1") is also recognised. The note after conversion still says how many lines were skipped.
 
 ## Owner, to check (the two Excel files; no SQL)
-1. Hard-refresh a record. *More*: **Download working Excel** comes first, then **Download Excel (final)**.
+1. Hard-refresh a record. *More*: **Download working Excel** (plain, as before) comes first, then **Download Excel (final)** in rose; on a phone the More sheet shows the same order and colour.
 2. Working: highlighted words in red, library answers yellow, Comments column, sheet 2 - as before.
 3. Final: every word black, except the brown lead-in ("Product Data:", "Fans:") and the coloured Sr; no fills, no Comments.
 4. Both: Compliance bold and wrapped ("Comply with Remarks" on two lines, not cut off), Remarks wrapped in a wider column; typing into an empty Compliance cell is bold too.

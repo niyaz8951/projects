@@ -92,7 +92,7 @@
       box = el('div', { 'class': 'hub-sheet actions', role: 'dialog', 'aria-modal': 'true', 'aria-label': title || 'More' }, [
         el('h2', { text: title || 'More' }),
         el('div', { 'class': 'hub-sheet-list' }, list.map(function (n) {
-          return el('button', { type: 'button', 'class': 'btn ghost' + (/danger/.test(n.className) ? ' danger-text' : ''), text: n.textContent.trim(), onclick: function () { close(); n.click(); } });
+          return el('button', { type: 'button', 'class': 'btn ghost' + (/danger/.test(n.className) ? ' danger-text' : '') + (/\bpr-final\b/.test(n.className) ? ' pr-final' : ''), text: n.textContent.trim(), onclick: function () { close(); n.click(); } });
         })),
         el('div', { 'class': 'hub-sheet-actions' }, [el('button', { type: 'button', 'class': 'btn ghost', text: 'Cancel', onclick: close })])
       ]);
