@@ -1,4 +1,4 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 005. Rolled back.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 006. Rolled back.
 -- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
 -- demo_user with 'edit') and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
@@ -39,7 +39,7 @@ end $$;
 grant execute on function pg_temp.act_as(text), pg_temp.expect_error(text, text) to public;
 
 do $$
-declare v jsonb; n int; v_id uuid; v_note uuid; v_code text; v_year text := to_char(now(), 'YYYY');
+declare v jsonb; n int; v_n2 int; v_id uuid; v_note uuid; v_run uuid; v_run2 uuid; v_code text; v_year text := to_char(now(), 'YYYY');
 begin
   -- signed out: nothing
   perform pg_temp.act_as(null);
@@ -223,6 +223,124 @@ begin
   select public.projects_get(v_id) into v;
   if jsonb_array_length(v -> 'notes') <> 1 or (v -> 'events' -> 0 ->> 'action') <> 'datasheet notes deleted' then raise exception 'note_delete'; end if;
   reset role;
+
+  -- specifications (006): convert, library, answers, review flag, split / join, upload, export (invented clauses)
+  perform pg_temp.act_as('demo_user');
+  perform pg_temp.expect_error(format('select public.projects_run_save(%L, ''ahu-riyadh'', ''pdf'', ''x.pdf'', ''[]''::jsonb)', v_id), 'INVALID:lines');
+  perform pg_temp.expect_error(format('select public.projects_run_save(%L, ''ahu-nowhere'', ''pdf'', ''x.pdf'', ''[{"type":"text","spec":"x"}]''::jsonb)', v_id), 'INVALID:factory_id');
+  perform pg_temp.expect_error(format('select public.projects_run_save(%L, ''ahu-riyadh'', ''pdf'', ''x.pdf'', ''[{"type":"text","spec":"x"}]''::jsonb)', gen_random_uuid()), 'NOT_FOUND');
+  select public.projects_run_save(v_id, 'ahu-riyadh', 'pdf', 'sample-spec.pdf', '[
+    {"type":"part","sr":"","spec":"PART 2 - PRODUCTS"},
+    {"type":"section","sr":"2.1","spec":"UNIT CASINGS"},
+    {"type":"letter","sr":"A.","spec":"Casing panels shall be double skin with 50 mm insulation between the skins."},
+    {"type":"number","sr":"1.","spec":"Inner skin shall be galvanised steel of 0.7 mm thickness."},
+    {"type":"text","sr":"","spec":"Short"},
+    {"type":"letter","sr":"B.","spec":"Casing panels shall be double skin with 50 mm insulation between the skins."},
+    {"type":"section","sr":"2.2","spec":"FILTERS"},
+    {"type":"letter","sr":"A.","spec":"Pre filters shall be ISO Coarse 60% (G4) washable type."}]'::jsonb) into v;
+  v_run := (v ->> 'run_id')::uuid;
+  if (v ->> 'lines')::int <> 8 or (v ->> 'unique_lines')::int <> 3 or (v ->> 'matched')::int <> 0 or jsonb_array_length(v -> 'answers') <> 0 then raise exception 'run_save: %', v; end if;
+  select public.projects_run_get(v_run) into v;
+  if (v -> 'run' ->> 'factory') <> 'Riyadh' or (v -> 'run' ->> 'project_code') <> v_code or (v -> 'run' ->> 'can_comment')::boolean or (v -> 'run' ->> 'can_review')::boolean then raise exception 'run_get run: %', v -> 'run'; end if;
+  if jsonb_array_length(v -> 'lines') <> 8 or (v -> 'lines' -> 2 ->> 'can')::boolean is not true or (v -> 'lines' -> 4 ->> 'can')::boolean is not false then raise exception 'run_get lines'; end if;
+  if (v -> 'lines' -> 5 ->> 'can')::boolean is not true then raise exception 'repeated clause is answerable'; end if;
+  -- answers: the project's own, review pending; the same as the library (none yet) would be ''
+  select public.projects_run_save_line(v_run, 2, 'Comply', '', 'casingpanelsshallbedoubleskinwith50mmins') into v;
+  if (v ->> 'review') <> 'pending' then raise exception 'save_line review: %', v; end if;
+  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', ''wrongkey'')', v_run), 'INVALID:check');
+  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 4, ''Comply'', '''', null)', v_run), 'INVALID:seq');
+  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', null)', gen_random_uuid()), 'NOT_FOUND');
+  select public.projects_run_fill_section(v_run, 1, 'Noted', false, null) into v;
+  if (v ->> 'filled')::int <> 2 or (v ->> 'kept')::int <> 1 then raise exception 'fill_section: %', v; end if;   -- A already answered and kept; 1. and B filled
+  select public.projects_run_fill_section(v_run, 1, 'Not Applicable', true, null) into v;
+  if (v ->> 'filled')::int <> 3 then raise exception 'fill_section replace: %', v; end if;
+  select public.projects_run_fill_section(v_run, 1, '', false, null) into v;
+  if (v ->> 'filled')::int <> 3 then raise exception 'fill_section clear: %', v; end if;
+  perform pg_temp.expect_error(format('select public.projects_run_fill_section(%L, 2, ''Noted'', false, null)', v_run), 'INVALID:seq');
+  perform public.projects_run_save_line(v_run, 2, 'Comply', '', null);
+  -- TL Review needs a tile admin; Internal Comments need the review right
+  perform pg_temp.expect_error(format('select public.projects_run_save_review(%L, 2, ''check this'', null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_save_comment(%L, 2, ''note # rule'', null)', v_run), 'NO_RIGHT');
+  reset role;
+  perform pg_temp.act_as('demo_admin');
+  perform public.projects_run_save_review(v_run, 2, 'check this', null);
+  perform public.projects_run_save_comment(v_run, 2, 'note for users # rule for reviewers', null);
+  select public.projects_run_get(v_run) into v;
+  if (v -> 'lines' -> 2 ->> 'tl_review') <> 'check this' or (v -> 'lines' -> 2 ->> 'lib_comments') <> 'note for users # rule for reviewers' then raise exception 'admin sees all comments: %', v -> 'lines' -> 2; end if;
+  if (v -> 'lines' -> 5 ->> 'lib_comments') <> 'note for users # rule for reviewers' then raise exception 'comment is the clause''s, on every row'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_user');
+  select public.projects_run_get(v_run) into v;
+  if (v -> 'lines' -> 2 ->> 'lib_comments') <> 'note for users' then raise exception 'user sees the note only: %', v -> 'lines' -> 2 ->> 'lib_comments'; end if;
+  if (v -> 'lines' -> 2 ->> 'by') <> 'demo_user' then raise exception 'answered by'; end if;
+  -- split: the words must not change; the first row keeps its answer (back to review), the new rows enter the library
+  perform pg_temp.expect_error(format('select public.projects_run_split(%L, 3, ''[{"type":"text","spec":"Inner skin shall be galvanised steel"},{"type":"text","spec":"of 0.8 mm thickness."}]''::jsonb, null)', v_run), 'INVALID:rows');
+  select public.projects_run_split(v_run, 3, '[{"type":"text","spec":"Inner skin shall be galvanised steel"},{"type":"text","sr":"","spec":"of 0.7 mm thickness."}]'::jsonb, null) into v;
+  if (v ->> 'rows')::int <> 2 then raise exception 'split'; end if;
+  select public.projects_run_get(v_run) into v;
+  if jsonb_array_length(v -> 'lines') <> 9 or (v -> 'lines' -> 3 ->> 'spec') <> 'Inner skin shall be galvanised steel' or (v -> 'lines' -> 4 ->> 'spec') <> 'of 0.7 mm thickness.' or (v -> 'lines' -> 4 ->> 'can')::boolean is not true then raise exception 'split rows: %', v -> 'lines'; end if;
+  if (v -> 'lines' -> 7 ->> 'spec') <> 'FILTERS' then raise exception 'split shifted the rows'; end if;
+  -- join the second part back; the row above keeps label and type; the words return
+  perform public.projects_run_join(v_run, 4, null);
+  select public.projects_run_get(v_run) into v;
+  if jsonb_array_length(v -> 'lines') <> 8 or (v -> 'lines' -> 3 ->> 'spec') <> 'Inner skin shall be galvanised steel of 0.7 mm thickness.' or (v -> 'lines' -> 3 ->> 'sr') <> '1.' then raise exception 'join: %', v -> 'lines' -> 3; end if;
+  perform pg_temp.expect_error(format('select public.projects_run_join(%L, 1, null)', v_run), 'INVALID:join');   -- into a PART row
+  reset role;
+  if (select count(*) from projects.lines where factory_id = 'ahu-riyadh') <> 3 then raise exception 'library lines after split/join: %', (select count(*) from projects.lines); end if;
+  perform pg_temp.act_as('demo_user');
+  -- a second record of the same factory: the library already holds the clauses; precedent needs 5 identical clauses (none here)
+  select public.projects_run_save(v_id, 'ahu-riyadh', 'text', 'pasted', '[
+    {"type":"letter","sr":"A.","spec":"Casing panels shall be double skin with 50 mm insulation between the skins."},
+    {"type":"letter","sr":"B.","spec":"A brand new clause nobody has met before, long enough to count."}]'::jsonb) into v;
+  v_run2 := (v ->> 'run_id')::uuid;
+  if (v ->> 'unique_lines')::int <> 2 or (v ->> 'matched')::int <> 0 then raise exception 'second run: %', v; end if;   -- the library answer is not approved yet (step 4)
+  if jsonb_array_length(v -> 'answers') <> 1 or (v -> 'answers' -> 0 ->> 'comments') <> 'note for users' then raise exception 'second run comments: %', v -> 'answers'; end if;
+  reset role;
+  if (select times_seen from projects.lines where norm_text = projects.cm_norm('Casing panels shall be double skin with 50 mm insulation between the skins.')) <> 2 then raise exception 'times_seen'; end if;
+  perform pg_temp.act_as('demo_user');
+  -- upload of a filled Excel: the answers land by text; the second run gets its answer
+  select public.projects_run_submit_answers(v_run2, '[{"spec":"A brand new clause nobody has met before, long enough to count.","compliance":"Not Comply","remarks":"x"},{"spec":"unknown clause","compliance":"Comply","remarks":""}]'::jsonb) into v;
+  if (v ->> 'stored')::int <> 1 or (v ->> 'pending')::int <> 1 then raise exception 'submit: %', v; end if;
+  -- the project page: two records with their counts; the list counts runs and pending answers
+  select public.projects_get(v_id) into v;
+  if jsonb_array_length(v -> 'runs') <> 2 then raise exception 'get runs'; end if;
+  if (select (x ->> 'answered')::int from jsonb_array_elements(v -> 'runs') x where x ->> 'file_name' = 'sample-spec.pdf') <> 1 then raise exception 'get run counts: %', v -> 'runs'; end if;
+  select max(runs), max(pending) into n, v_n2 from public.projects_list(v_code, null, null); if n <> 2 or v_n2 <> 2 then raise exception 'list runs/pending: % %', n, v_n2; end if;
+  -- export: every row with the answer that applies
+  select public.projects_export(v_id) into v;
+  if jsonb_array_length(v -> 'runs') <> 2 or jsonb_array_length(v -> 'compliance') <> 10 or jsonb_array_length(v -> 'tables') <> 1 then raise exception 'export: % % %', jsonb_array_length(v -> 'runs'), jsonb_array_length(v -> 'compliance'), jsonb_array_length(v -> 'tables'); end if;
+  if (select x ->> 'source' from jsonb_array_elements(v -> 'compliance') x where x ->> 'spec' = 'A brand new clause nobody has met before, long enough to count.') <> 'Project answer, waiting for review' then raise exception 'export source'; end if;
+  -- approved Product Options: none approved yet
+  select public.projects_po_approved('ahu-riyadh') into v;
+  if jsonb_array_length(v -> 'values') <> 0 or (v ->> 'factory') <> 'Riyadh' then raise exception 'po_approved: %', v; end if;
+  perform pg_temp.expect_error('select public.projects_po_approved(''nowhere'')', 'INVALID:factory_id');
+  -- the record leaves the project; pending answers are withdrawn; the library keeps the clause
+  perform public.projects_run_delete(v_run2);
+  perform pg_temp.expect_error(format('select public.projects_run_get(%L)', v_run2), 'NOT_FOUND');
+  select public.projects_get(v_id) into v;
+  if jsonb_array_length(v -> 'runs') <> 1 or (v -> 'events' -> 0 ->> 'action') <> 'compliance record removed' then raise exception 'run_delete'; end if;
+  reset role;
+  if (select review from projects.run_lines where run_id = v_run2 and seq = 1) <> '' then raise exception 'pending withdrawn'; end if;
+  if (select count(*) from projects.lines where factory_id = 'ahu-riyadh') <> 4 then raise exception 'library keeps the clauses'; end if;
+  -- another user: the record is NOT_FOUND; a reader: reads, cannot write
+  perform pg_temp.act_as('demo_none');
+  perform pg_temp.expect_error(format('select public.projects_run_get(%L)', v_run), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', null)', v_run), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.projects_export(%L)', v_id), 'NOT_FOUND');
+  reset role;
+  update core.tile_access set rights = '{}' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
+  perform pg_temp.act_as('demo_user');
+  select public.projects_run_get(v_run) into v; if (v -> 'run' ->> 'can_edit')::boolean then raise exception 'reader can_edit'; end if;
+  select public.projects_export(v_id) into v; if (v -> 'project' ->> 'code') <> v_code then raise exception 'reader exports'; end if;
+  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_fill_section(%L, 1, ''Noted'', false, null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_split(%L, 3, ''[]''::jsonb, null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_join(%L, 3, null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_delete(%L)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_submit_answers(%L, ''[{}]''::jsonb)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_save(%L, ''ahu-riyadh'', ''pdf'', ''x'', ''[{"type":"text","spec":"x"}]''::jsonb)', v_id), 'NO_RIGHT');
+  reset role;
+  update core.tile_access set rights = array['edit'] where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_user');
 
   -- sharing (003): only a tile admin or the super user shares; a member sees, opens and edits, cannot share on
   perform pg_temp.act_as('demo_user'); -- creator, not an admin

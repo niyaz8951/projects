@@ -15,7 +15,11 @@
 <script src="/dame-hub/core/v1/core.js" defer></script>
 <script src="/projects/assets/ds-xlsx.js" defer></script>
 <script src="/projects/assets/pr-xlsx.js" defer></script>
+<script src="/projects/assets/xlsx-lite.js" defer></script>
+<script src="/projects/assets/cm-rows.js" defer></script>
+<script src="/projects/assets/pr-match.js" defer></script>
 <script src="/projects/assets/pr-common.js" defer></script>
+<script src="/projects/assets/pr-hub.js" defer></script>
 <script src="/projects/assets/pr-project.js" defer></script>
 </head>
 <body>
@@ -30,7 +34,10 @@
       </div>
       <span class="badge accent mono" id="code" hidden></span>
     </div>
-    <button class="btn" type="button" id="edit" hidden>Edit details</button>
+    <div class="pr-actions">
+      <button class="btn" type="button" id="export" hidden>Download project (Excel)</button>
+      <button class="btn" type="button" id="edit" hidden>Edit details</button>
+    </div>
   </div>
 
   <div id="loading"></div>
@@ -42,6 +49,7 @@
         <p class="section-title" id="next-eyebrow">Next step</p>
         <h2 id="next-title"></h2>
         <p class="muted" id="next-sub"></p>
+        <div class="pr-next-meter" id="meter" hidden><div class="progress" role="img"><span id="meter-bar"></span></div><span class="muted pr-light" id="meter-text"></span></div>
       </div>
       <div class="pr-next-actions" id="next-actions"></div>
     </section>
@@ -60,8 +68,16 @@
 
     <section class="card" aria-labelledby="h-runs">
       <h2 id="h-runs">2. Compliance records</h2>
-      <p class="muted">One record per converted specification. Answers are kept in the project; new ones go to the reviewers for the library.</p>
+      <p class="muted">One record per converted specification, grouped by product. Open a name to read it and fill Compliance and Remarks online, or upload the Excel you filled. Your answers are kept in the project; new ones go to the reviewers for the library.</p>
+      <div class="notice" id="up-msg" role="status" aria-live="polite" hidden></div>
       <div id="runs"></div>
+      <input type="file" id="file" class="pr-hidden-submit" accept=".xlsx" tabindex="-1" aria-hidden="true">
+    </section>
+
+    <section class="card" id="compare-card" aria-labelledby="h-compare" hidden>
+      <h2 id="h-compare">Specification beside datasheet</h2>
+      <p class="muted">What the specification asks for, next to what each unit has, row by row.</p>
+      <div class="row" id="compare"></div>
     </section>
 
     <section class="card" aria-labelledby="h-details">

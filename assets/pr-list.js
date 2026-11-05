@@ -71,13 +71,18 @@
             el('span', { class: 'sub code', text: p.code })),
           el('td', { 'data-label': 'Client' }, p.client_name, el('span', { class: 'sub', text: p.client_type })),
           el('td', { 'data-label': 'Region', text: p.region }),
+          el('td', { 'data-label': 'Saved' }, el('div', { class: 'chips pr-saved' },
+            p.runs ? el('span', { class: 'badge', text: p.runs + (p.runs === 1 ? ' compliance sheet' : ' compliance sheets') }) : null,
+            p.notes ? el('span', { class: 'badge', text: p.notes + (p.notes === 1 ? ' datasheet table' : ' datasheet tables') }) : null,
+            p.pending ? el('span', { class: 'badge warning', text: p.pending + ' in review' }) : null,
+            !p.runs && !p.notes ? el('span', { class: 'sub', text: 'Nothing saved yet' }) : null)),
           seesAll ? el('td', { 'data-label': 'Created by', text: p.created_by_name }) : null,
           el('td', { 'data-label': 'Last changed', text: Core.date(p.updated_at) }));
         tbody.appendChild(tr);
       });
       host.appendChild(el('div', { class: 'table-wrap' },
         el('table', { class: 'pr-table' },
-          el('thead', null, el('tr', null, el('th', { text: 'Project' }), el('th', { text: 'Client' }), el('th', { text: 'Region' }),
+          el('thead', null, el('tr', null, el('th', { text: 'Project' }), el('th', { text: 'Client' }), el('th', { text: 'Region' }), el('th', { text: 'Saved' }),
             seesAll ? el('th', { text: 'Created by' }) : null, el('th', { text: 'Last changed' }))),
           tbody)));
     }
@@ -113,8 +118,8 @@
     // download the shown rows as a CSV built here in the browser
     function csvCell(v) { v = v === null || v === undefined ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
     $('#download').addEventListener('click', function () {
-      var lines = [['Code', 'Project', 'Client type', 'Client name', 'Region', 'Created by', 'Created', 'Last changed']];
-      rows.forEach(function (p) { lines.push([p.code, p.name, p.client_type, p.client_name, p.region, p.created_by_name, Core.date(p.created_at), Core.date(p.updated_at)]); });
+      var lines = [['Code', 'Project', 'Client type', 'Client name', 'Region', 'Created by', 'Created', 'Compliance sheets', 'Datasheet tables', 'Answers in review', 'Last changed']];
+      rows.forEach(function (p) { lines.push([p.code, p.name, p.client_type, p.client_name, p.region, p.created_by_name, Core.date(p.created_at), p.runs || 0, p.notes || 0, p.pending || 0, Core.date(p.updated_at)]); });
       var text = '﻿' + lines.map(function (l) { return l.map(csvCell).join(','); }).join('\r\n') + '\r\n';
       Core.download('projects.csv', new Blob([text], { type: 'text/csv;charset=utf-8' }));
     });

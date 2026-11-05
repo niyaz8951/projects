@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-loading>
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cykpvtekrdfmqimtrcps.supabase.co; connect-src 'self' https://cykpvtekrdfmqimtrcps.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Specification and datasheet - DAME HUB</title>
+<link rel="stylesheet" href="/dame-hub/core/v1/theme.css">
+<link rel="stylesheet" href="/projects/assets/pr.css">
+<link rel="stylesheet" href="/projects/assets/pr-legacy.css">
+<link rel="icon" href="/dame-hub/core/v1/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/dame-hub/core/v1/icons/apple-touch-icon.png">
+<script src="/dame-hub/core/v1/config.js" defer></script>
+<script src="/dame-hub/core/v1/api.js" defer></script>
+<script src="/dame-hub/core/v1/core.js" defer></script>
+<script src="/projects/assets/pr-common.js" defer></script>
+<script src="/projects/assets/pr-hub.js" defer></script>
+<script src="/projects/assets/cm-rows.js" defer></script>
+<script src="/projects/assets/pr-xlsx.js" defer></script>
+<script src="/projects/assets/pr-match.js" defer></script>
+<script src="/projects/assets/pr-compare.js" defer></script>
+</head>
+<body class="pr-legacy">
+<header id="topbar"></header>
+<main class="page cp-page">
+  <p class="small"><a id="back" href="/projects/">&larr; Projects</a></p>
+  <div class="empty" id="cp-loading">Putting the specification beside the datasheet…</div>
+  <div class="notice error" id="cp-error" role="alert" hidden></div>
+
+  <div id="cp-main" hidden>
+    <div class="page-head cp-head">
+      <div>
+        <h1 id="cp-title">Specification and datasheet</h1>
+        <p>What the specification asks for, beside what each unit has, row by row. You judge whether it complies.</p>
+        <div class="cp-facts" id="cp-facts"></div>
+      </div>
+      <div class="row"><button type="button" class="btn" id="cp-download">Download Excel</button></div>
+    </div>
+
+    <section class="card stack">
+      <div class="cp-bar">
+        <label class="field"><span>Find</span><input class="input" id="cp-q" type="search" placeholder="Component, requirement or value" autocomplete="off"></label>
+        <label class="check"><input type="checkbox" id="cp-only"> Only rows the specification asks about</label>
+      </div>
+      <p class="small muted" id="cp-count" role="status"></p>
+      <div class="notice warn" id="cp-note" hidden></div>
+      <div class="empty" id="cp-empty" hidden>No row matches.</div>
+      <div class="table-wrap cp-wrap" id="cp-wrap" tabindex="0" role="region" aria-label="Specification beside datasheet">
+        <table class="table cp" id="cp-table">
+          <colgroup id="cp-cols"></colgroup>
+          <thead><tr id="cp-head-row"></tr></thead>
+          <tbody id="cp-body"></tbody>
+        </table>
+      </div>
+      <p class="hint">A requirement is found by the keywords an editor set for the row in the row mapping, not by meaning: read each clause before you rely on it. An empty requirement means no keyword matched, not that the specification is silent. Press a row name to see what the factory has offered for it.</p>
+    </section>
+  </div>
+</main>
+
+</body>
+</html>

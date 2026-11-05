@@ -147,3 +147,11 @@
   .pr-notes .act { display: flex; flex-wrap: wrap; gap: 8px; text-align: left; white-space: normal; padding-top: 10px; }
   .pr-notes .act .btn + .btn { margin-left: 0; }
 }
+/* records on the project page */
+.pr-next-meter { margin-top: var(--space-3); display: grid; gap: 6px; max-width: 420px; }
+.pr-notes .pr-group td { background: var(--surface-2); font-weight: 650; }
+.pr-runs .pr-meter { max-width: 150px; margin: 6px 0 4px; }
+.pr-runs .chips { gap: 4px; }
+#up-msg { margin-bottom: var(--space-3); }
+#up-msg[hidden] { display: none; }
+.pr-saved { gap: 4px; } .pr-saved .badge { font-size: 0.78rem; }
