@@ -85,21 +85,37 @@
           });
       // the Matching rules (pr-settings.js) are handed to the matcher before it runs; without them the built-in values hold
       var settings = window.PRSettings ? window.PRSettings.load() : Promise.resolve(null);
+      // a product a reviewer switched to the vocabulary (011): its verified vocabulary, else null (Spec keywords as before)
+      var vocab = settings.then(function (st) {
+        var on = st && st.values && (st.values.vocab_products || []).indexOf(o.productId) >= 0;
+        return on && window.PRVocab ? window.PRVocab.load(o.productId).then(function (v) { return v && v.types.length ? { v: v, values: st.values } : null; }) : null;
+      });
       return Promise.all([Api.dnRules(t, o.productId).then(function (r) { return (r && r.rules) || []; }, function () { return []; }), spec,
-        Promise.all(notes.map(function (n) { return Api.prNoteGet(t, n.id); })), settings]).then(function (got) {
+        Promise.all(notes.map(function (n) { return Api.prNoteGet(t, n.id); })), settings, vocab]).then(function (got) {
         var rules = got[0], specRows = got[1], tables = got[2], columns = [], factory = '';
         tables.forEach(function (n) { var f = factoryOf(n.rows); if (f) factory = f; });      // the newest table names it
         var entries = unitLookup(tables, columns), s = '', table = [];
-        window.CMRows.match(specRows, rules).forEach(function (r) {
+        var byVocab = got[4];
+        (byVocab ? window.PRVocab.match(specRows, rules, byVocab.v, byVocab.values) : window.CMRows.match(specRows, rules)).forEach(function (r) {
           if (r.section) s = r.section;
-          var base = { section: s, kind: r.kind, key: r.key || '', component: r.component, spec: r.text || '', found: !!r.found, lines: r.lines || [] };
+          var base = { section: s, kind: r.kind, key: r.key || '', component: r.component, spec: r.text || '', found: !!r.found, lines: r.lines || [], terms: r.terms || [] };
           if (r.kind === 'sub') { table.push(Object.assign({ cells: [] }, base)); return; }
           var list = entries({ key: r.key, section: s, component: r.component });
-          if (!list.length) list = [{ qual: '', cells: columns.map(function () { return ''; }) }];
+          var none = !list.length;      // no datasheet row for it: the vocabulary's "#n" clauses all belong to the one row shown
+          if (none) list = [{ qual: '', cells: columns.map(function () { return ''; }) }];
           // one row per table row it stands for: "Filter Class · Filter 1", "Filter Class · Filter 2"
-          list.forEach(function (e) { table.push(Object.assign({}, base, { component: base.component + (e.qual ? ' \u00b7 ' + e.qual : ''), cells: e.cells })); });
+          list.forEach(function (e, n) {
+            var one = { component: base.component + (e.qual ? ' \u00b7 ' + e.qual : ''), cells: e.cells };
+            // the vocabulary's "#2": a clause that asks for the second row of the key (Filter 2) belongs to that entry only
+            if (r.nth) {
+              var extra = none ? Object.keys(r.nth).reduce(function (all, k) { return all.concat(r.nth[k]); }, []) : (r.nth[n + 1] || []);
+              one.lines = base.lines.concat(extra.filter(function (x, i, a) { return base.lines.indexOf(x) < 0 && a.indexOf(x) === i; })).sort(function (x, y) { return x - y; });
+              one.found = one.lines.length > 0;
+            }
+            table.push(Object.assign({}, base, one));
+          });
         });
-        return { product: product, factory: factory, columns: columns, table: table, runs: runs, notes: notes, hasNotes: tables.length > 0, rules: rules,
+        return { product: product, factory: factory, columns: columns, table: table, runs: runs, notes: notes, hasNotes: tables.length > 0, rules: rules, byVocab: !!byVocab,
                  keyed: rules.filter(function (r) { return r.show !== false && String(r.keywords || '').trim(); }).length };
       });
     });

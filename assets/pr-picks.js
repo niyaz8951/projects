@@ -454,6 +454,8 @@
       if (r.kind !== 'row' || !r.found) return;
       if (match.hasNotes && window.PRMatch.hasValue(r)) return;      // the datasheet answers it: a blue chip, not a pick
       var rule = rules[r.key], entries = String(rule && rule.keywords || '').split(';').map(wordsList).filter(function (e) { return e.length; });
+      // a row found by the vocabulary: its types' words count as keywords too (011)
+      (r.terms || []).forEach(function (x) { var e = wordsList(x); if (e.length) entries.push(e); });
       (r.lines || []).forEach(function (i) {
         var l = rowsOf[i] || (rowsOf[i] = []);
         if (!l.some(function (x) { return x.key === r.key; })) l.push({ key: r.key, section: r.section, component: String(rule && rule.label || '').trim() || r.component.replace(/\s·.*$/, ''), entries: entries });
@@ -496,6 +498,6 @@
     if (v.choose_listed != null) LISTED = v.choose_listed;
   }
 
-  window.PRPicks = { build: build, configure: configure, propertyOf: propertyOf, classRequirements: classRequirements, measurements: measurements, requirements: requirements, compareDatasheet: compareDatasheet, optionPicks: optionPicks,
+  window.PRPicks = { build: build, configure: configure, propertyOf: propertyOf, classRequirements: classRequirements, classTokens: classTokens, familyOf: familyOf, measurements: measurements, requirements: requirements, compareDatasheet: compareDatasheet, optionPicks: optionPicks,
                      poKind: poKind, poAutoKind: poAutoKind, parentOf: parentOf, subjectOf: subjectOf, fmt: fmt, convert: convert };
 })();

@@ -216,6 +216,7 @@
   }
   core.cmOptions = function () { return rpc('projects_products').then(function (p) { return { products: p || [] }; }); };
   core.prSettings = function () { return rpc('projects_settings_get'); };
+  core.prVocab = function (productId) { return rpc('projects_vocab_get', { p_product_id: productId }); };
   core.dnRules = function (t, productId) { return rpc('projects_dn_rules', { p_product_id: productId }); };
   core.prGet = function (t, id) { return rpc('projects_get', { p_id: id }).then(function (d) { return Object.assign({ project: d }, d); }); };
   core.prNoteGet = function (t, id) { return rpc('projects_note_get', { p_id: id }); };

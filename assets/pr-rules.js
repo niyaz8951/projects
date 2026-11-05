@@ -28,7 +28,9 @@
     figure_words: 'A figure belongs to a row within',
     option_values: 'Approved values used per row',
     candidates_shown: 'Values on the Selection list per row',
-    choose_listed: 'Values named in a "choose:" chip'
+    choose_listed: 'Values named in a "choose:" chip',
+    vocab_products: 'Match this product by its vocabulary',
+    vocab_fallback: 'Keywords where the vocabulary finds nothing'
   };
   var HELP = {
     topics: 'The topic gate. A clause about one part of the unit (its label or the heading above it names filters, fans, a VFD ...) only takes datasheet rows of that part. A clause or a row with no topic is not gated. Order matters: a text takes the first topic it names, so put the specific ones (VFD, heat pipe) above the wide ones (fan, coil). Words are whole words; "*" at the end of a word means any ending (humidif* finds humidifier and humidification); write a plural as its own word.',
@@ -45,7 +47,9 @@
     figure_words: 'A figure in the clause is compared with a row only when one of the row\'s keywords stands within this many words of it (or in the heading above).',
     option_values: 'The most seen approved values of a row at the record\'s factory.',
     candidates_shown: 'On the Selection list sheet of the working Excel.',
-    choose_listed: 'In "choose: ..." and "none of the values seen meets ...", the rest as "and n more".'
+    choose_listed: 'In "choose: ..." and "none of the values seen meets ...", the rest as "and n more".',
+    vocab_products: 'Off: every datasheet row is found by its Spec keywords, as before. On: a row that a verified type of the vocabulary points at (Row:) is found by the vocabulary - what the clause asks, by its landmarks; a "#2" row (Filter 2) gets only the clauses about it. Rows no verified type points at keep their Spec keywords. Only verified items are read.',
+    vocab_fallback: 'For a row the vocabulary covers but finds no clause for in this specification: on, its Spec keywords are used instead (you never see fewer rows than with keywords); off, the row stays empty (no keyword guesses for rows the vocabulary covers).'
   };
   var UNITS = { near_words: 'words', max_clauses: 'clauses', keep_share: '% of the best', heading_words: 'words', label_chars: 'characters', figure_words: 'words',
                 option_values: 'values', candidates_shown: 'values', choose_listed: 'values' };
@@ -84,6 +88,14 @@
       'A length figure is compared only with a row of the same dimension: thickness, diameter, spacing, height, width, length, depth (a "size" row takes height, width, length or depth).',
       'A % figure is compared only when both name the same measure: arrestance, coarse, ePM1, ePM2.5, ePM10, MERV, dust spot, efficiency, humidity, recirculation, leakage, slope, speed, torque.',
       'Duty figures (flows, pressures, capacities, sizes ...), project conditions (location, altitude, air density) and hidden rows are never options. Which is which is worked out from the row name; a reviewer changes it per row on Row mapping ("In Product Options") or on Product Options (Move to duty figures / Move to options).'
+    ]],
+    ['The vocabulary (pr-vocab.js, the old identify())', [
+      'A term is found as a whole word or phrase, with an ending s, es, ed or ing allowed; a hyphen counts as a space; where two terms cover the same words, the longer one counts.',
+      'Score of a type: its two rarest property terms (the rarer a term among all types, the more it weighs: up to 4, times 2 for the first and 0.6 for the second); +2 when the clause names the type\'s component, +1.2 when only its heading does; +3 for an anchor or a class of its scale (+0.8 for a short anchor standing alone); +1.5 for component and property together; -3 (-1.5 with the component in the heading) when the clause names other components and not this one; +1.5 for its standard; for a figure in the type\'s unit +4 when near its words, +1.5 farther away, -1 when the figures are in other units; -5 for a Not word; +1 for an option named; for a class +1.5 when the class is written, -1.5 when only figures are.',
+      'Generic words (rating, capacity, diameter, length, depth, width, lock, stainless steel) count only beside the type\'s component.',
+      'A component alone is not a requirement: a type needs a property term or an anchor. A type is recognised at a score of 3.5 or more; at most 3 types per clause, those scoring below 60% of the best are dropped, and two types of one component found by the same words count once.',
+      'An Equivalent ("MERV 14 = F8") reads the class from another scale; a range on its left side ("MERV 7-8") is for people only. A class asked is a minimum.',
+      'The heading above the clause and the section title count as its heading. The Parts searched, the clauses per row and the weaker-clause share of "Finding the row" apply to the vocabulary too; the topic gate does not (the components do that job).'
     ]]
   ];
 
@@ -271,10 +283,11 @@
     panels.picks = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'picks', hidden: true },
       el('p', { class: 'muted', text: 'For a row the project has no datasheet value for, the dashed chip names the approved Product Options value that meets the clause. These settings decide what "meets" and "better" mean.' }),
       TABS.picks.map(function (k) { return card(k, editorFor(k)); }));
+    panels.vocab = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'vocab', hidden: true }, vocabPanel());
     panels.record = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'record', hidden: true }, fixedCard(FIXED[1]));
     panels.fixed = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'fixed', hidden: true },
       el('p', { class: 'muted', text: 'What the code still decides on its own. Nothing is hidden: if one of these needs to change, ask for it to be moved to the settings above.' }),
-      fixedCard(FIXED[0]), fixedCard(FIXED[2]));
+      fixedCard(FIXED[0]), fixedCard(FIXED[2]), fixedCard(FIXED[3]));
     panels['try'] = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'try', hidden: true }, tryCard());
     panels.history = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'history', hidden: true }, historyCard());
     Object.keys(panels).forEach(function (k) { host.appendChild(panels[k]); });
@@ -293,15 +306,298 @@
       var input = document.getElementById('in-' + key);
       if (input) input.value = S.NUMBERS[key] ? state.draft[key] : commas(state.draft[key]);
     }
-    paintStatus(key); refreshBar();
+    paintStatus(key); refreshBar(); paintSwitch();
   }
 
   function showTab(name) {
     [].forEach.call(document.querySelectorAll('#mr-tabs button'), function (b) { b.setAttribute('aria-selected', b.getAttribute('data-tab') === name ? 'true' : 'false'); });
     Object.keys(panels).forEach(function (k) { panels[k].hidden = k !== name; });
     if (name === 'history') loadHistory();
+    if (name === 'vocab') showVocab();
   }
   $('#mr-tabs').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) showTab(b.getAttribute('data-tab')); });
+
+  /* ---------- the vocabulary (011) ---------- */
+  // per product: its items (every item, verified or not: this page is for the reviewers), loaded once and after each change
+  var V = { product: null, items: {}, host: null, info: null, list: null, problems: null, ok: true, open: {} };
+  var KIND_HELP = { value: 'a figure', class: 'a grade on a scale', standard: 'a test or a code', choice: 'one of some options', presence: 'provided or not' };
+  function vocabItems(productId, fresh) {
+    if (fresh || !V.items[productId]) {
+      V.items[productId] = Api.rpc('projects_vocab_get', { p_product_id: productId }).then(function (r) { V.ok = true; return (r && r.items) || []; },
+        function (err) { V.ok = false; delete V.items[productId]; throw err; });
+      if (window.PRVocab) window.PRVocab.reload(productId);
+    }
+    return V.items[productId];
+  }
+  function productName(id) { var p = state.products.filter(function (x) { return x.id === id; })[0]; return p ? p.name : id; }
+
+  function vocabPanel() {
+    V.product = (state.products[0] || {}).id || 'ahu';
+    var pick = el('select', { id: 'vb-product', 'aria-label': 'Product' }, state.products.map(function (p) { return el('option', { value: p.id, text: p.name }); }));
+    pick.addEventListener('change', function () { V.product = pick.value; paintSwitch(); showVocab(); });
+    var sw = el('input', { type: 'checkbox', id: 'vb-on' });
+    sw.addEventListener('change', function () {
+      var list = state.draft.vocab_products.filter(function (x) { return x !== V.product; });
+      if (sw.checked) list.push(V.product);
+      setDraft('vocab_products', list);
+    });
+    var fb = el('input', { type: 'checkbox', id: 'vb-fallback' });
+    fb.addEventListener('change', function () { setDraft('vocab_fallback', fb.checked); });
+    V.sw = sw; V.fb = fb;
+    V.info = el('p', { class: 'muted', 'aria-live': 'polite' });
+    V.problems = el('div');
+    V.list = el('div', { class: 'stack' });
+    var btn = function (label, fn, kind) { return el('button', { type: 'button', class: 'btn small' + (kind ? ' ' + kind : ''), text: label, on: { click: fn } }); };
+    V.tools = el('div', { class: 'row mr-vb-tools' },
+      btn('Load the starter vocabulary', loadStarter), btn('Import outline', importOutline), btn('Export outline', exportOutline),
+      btn('Verify all', function () { verify(null, true); }), btn('Add a component', function () { addItem('component'); }), btn('Add a standard', function () { addItem('standard'); }));
+    return [
+      el('p', { class: 'muted', text: 'The old vocabulary map, as a list: for each product the standards specifications cite, the components of the unit and under each component the requirement types - how specifications name them (Terms, Anchors), the unit and which way is better, the class scale, the standards, the options, the words that mean something else (Not), and the datasheet row that answers them (Row). The record recognises what a clause asks by these landmarks (no AI). Nothing is read before it is verified.' }),
+      el('section', { class: 'card stack' },
+        el('label', { class: 'field mr-vb-product' }, el('span', { text: 'Product' }), pick),
+        card('vocab_products', el('label', { class: 'check' }, sw, el('span', { id: 'vb-on-text' }))),
+        card('vocab_fallback', el('label', { class: 'check' }, fb, ' Use the Spec keywords for those rows')),
+        V.info, V.tools, V.problems),
+      V.list
+    ];
+  }
+  function paintSwitch() {
+    if (!V.sw) return;
+    V.sw.checked = state.draft.vocab_products.indexOf(V.product) >= 0;
+    V.fb.checked = state.draft.vocab_fallback !== false;
+    var t = document.getElementById('vb-on-text'); if (t) t.textContent = ' Match ' + productName(V.product) + ' by its verified vocabulary (saved with Save changes)';
+  }
+
+  function showVocab() {
+    paintSwitch();
+    Core.clear(V.list); V.list.appendChild(el('p', { class: 'muted', text: 'Loading…' }));
+    var id = V.product;
+    vocabItems(id).then(function (items) { if (id === V.product) drawVocab(items); }, function (err) {
+      Core.clear(V.list); V.tools.hidden = true;
+      V.list.appendChild(el('p', { class: 'notice warning', text: 'The vocabulary could not be read: ' + Core.errorMessage(err) + ' If SQL 011 (db/projects/011_vocabulary.sql) has not been run yet, run it.' }));
+    });
+  }
+
+  function drawVocab(items) {
+    V.tools.hidden = false; V.lastItems = items;
+    var v = window.PRVocab.build(items, true), types = items.filter(function (x) { return x.level === 'type'; });
+    var verified = types.filter(function (x) { return x.verified; }).length, waiting = items.filter(function (x) { return !x.verified; }).length;
+    var rows = {}; types.forEach(function (t) { if (t.verified) (t.fields.rows || []).forEach(function (r) { rows[window.PRVocab.rowRef(r).key] = 1; }); });
+    V.info.textContent = items.length
+      ? types.length + ' requirement types (' + verified + ' verified) under ' + items.filter(function (x) { return x.level === 'component'; }).length + ' components, '
+        + items.filter(function (x) { return x.level === 'standard'; }).length + ' standards. ' + (waiting ? waiting + ' items wait to be verified. ' : 'Everything is verified. ')
+        + Object.keys(rows).length + ' datasheet rows are pointed at by a verified type.'
+      : 'No vocabulary for ' + productName(V.product) + ' yet. Load the starter vocabulary (the old tool\'s template) or import an outline.';
+    V.tools.querySelector('button').hidden = !(window.PRVocabStarter && window.PRVocabStarter[V.product]);
+    Core.clear(V.problems);
+    if (v.problems.length) V.problems.appendChild(el('details', { class: 'notice warning' },
+      el('summary', { text: v.problems.length + (v.problems.length === 1 ? ' thing to fix' : ' things to fix') }),
+      el('ul', { class: 'mr-fixed' }, v.problems.map(function (p) { return el('li', { text: p }); }))));
+    Core.clear(V.list);
+    var std = items.filter(function (x) { return x.level === 'standard'; });
+    if (std.length) V.list.appendChild(group('Standards', null, std));
+    items.filter(function (x) { return x.level === 'component'; }).forEach(function (c) {
+      V.list.appendChild(group(c.title, c, types.filter(function (t) { return t.component.toLowerCase() === c.title.toLowerCase(); })));
+    });
+  }
+  function badge(it) {
+    return it.verified ? el('span', { class: 'badge success', text: 'Verified' }) : el('span', { class: 'badge warning', text: 'To verify' });
+  }
+  function group(title, comp, list) {
+    var key = 'g:' + title.toLowerCase();
+    var d = el('details', { class: 'card mr-vb-group' });
+    if (V.open[key]) d.open = true;
+    d.addEventListener('toggle', function () { V.open[key] = d.open; });
+    var waiting = list.filter(function (x) { return !x.verified; }).length + (comp && !comp.verified ? 1 : 0);
+    d.appendChild(el('summary', {}, el('strong', { text: title }), el('span', { class: 'muted', text: ' · ' + list.length + (comp ? ' types' : ' standards') }),
+      waiting ? el('span', { class: 'badge warning mr-vb-badge', text: waiting + ' to verify' }) : null));
+    var body = el('div', { class: 'stack mr-vb-body' });
+    if (comp) body.appendChild(itemBox(comp, true));
+    list.forEach(function (it) { body.appendChild(itemBox(it, false)); });
+    if (comp) body.appendChild(el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn small', text: 'Add a type to ' + comp.title, on: { click: function () { addItem('type', comp.title); } } })));
+    d.appendChild(body);
+    return d;
+  }
+  function itemBox(it, isComp) {
+    var d = el('details', { class: 'mr-item mr-vb-item' + (isComp ? ' mr-vb-comp' : '') }), built = false, f = it.fields || {};
+    var sub = it.level === 'type' ? f.kind + ((f.rows || []).length ? ' · row: ' + f.rows.join('; ') : ' · no datasheet row') : isComp ? 'the component: its words' : (f.terms || []).join(', ');
+    d.appendChild(el('summary', {}, el('span', { class: 'mr-vb-title', text: isComp ? 'Component: ' + it.title : it.title }), ' ', badge(it), el('span', { class: 'faint small mr-vb-sub', text: sub })));
+    d.addEventListener('toggle', function () { if (d.open && !built) { built = true; d.appendChild(itemForm(it)); } });
+    return d;
+  }
+
+  // one item's form; a list field is typed with commas (Rows with ";", Equivalents one per line, Scale worst first)
+  function itemForm(it) {
+    var f = it.fields || {}, inputs = {};
+    function text(name, label, value, opts) {
+      opts = opts || {};
+      var input = opts.area ? el('textarea', { rows: opts.rows || 2, class: 'mr-text', spellcheck: 'false' }) : el('input', { type: 'text', spellcheck: 'false', list: opts.list || null });
+      input.value = value == null ? '' : value; inputs[name] = input;
+      return el('label', { class: 'field' + (opts.wide ? ' mr-wide' : '') }, el('span', { text: label }), input);
+    }
+    function select(name, label, value, options) {
+      var s = el('select', {}, options.map(function (o) { return el('option', { value: o[0], text: o[1], selected: o[0] === value }); }));
+      inputs[name] = s; return el('label', { class: 'field' }, el('span', { text: label }), s);
+    }
+    var grid = el('div', { class: 'mr-prop-grid' });
+    grid.appendChild(text('title', it.level === 'standard' ? 'Standard' : 'Name', it.title));
+    if (it.level === 'type') {
+      var comps = (V.lastItems || []).filter(function (x) { return x.level === 'component'; }).map(function (x) { return [x.title, x.title]; });
+      grid.appendChild(select('component', 'Component', it.component, comps.length ? comps : [[it.component, it.component]]));
+      grid.appendChild(select('kind', 'Kind', f.kind, window.PRVocab.KINDS.map(function (k) { return [k, k + ' (' + KIND_HELP[k] + ')']; })));
+      grid.appendChild(text('terms', 'Terms: how specifications name it', commas(f.terms), { area: true, wide: true }));
+      grid.appendChild(text('anchors', 'Anchors: tokens that point at it alone (L2, IE3, ePM1)', commas(f.anchors), { wide: true }));
+      grid.appendChild(text('unit', 'Unit (mm, pa, m3/h, %, h ...)', f.unit));
+      grid.appendChild(select('dir', 'Which way is better', f.dir || '', [['', '-'], ['higher', 'Higher is better'], ['lower', 'Lower is better'], ['exact', 'Must match']]));
+      grid.appendChild(text('scale', 'Scale, worst first (G3 < G4 < M5)', (f.scale || []).join(' < ')));
+      grid.appendChild(text('standards', 'Standards', commas(f.standards), { wide: true }));
+      grid.appendChild(text('options', 'Options (for a choice)', commas(f.options), { wide: true }));
+      grid.appendChild(text('not', 'Not: words that mean it is something else', commas(f.not), { wide: true }));
+      grid.appendChild(text('rows', 'Row: the datasheet rows that answer it (";" between; "#2" = the second row of that key)', (f.rows || []).join('; '), { wide: true, list: 'vb-rows-' + V.product }));
+      grid.appendChild(text('equivalents', 'Equivalents, one per line (MERV 13 = F7)', (f.equivalents || []).join('\n'), { area: true, wide: true }));
+      grid.appendChild(text('example', 'Example clause', f.example, { area: true, wide: true }));
+    } else {
+      grid.appendChild(text('terms', it.level === 'component' ? 'Terms: how specifications name the component' : 'Other ways it is written', commas(f.terms), { area: true, wide: true }));
+      if (it.level === 'component') grid.appendChild(text('not', 'Not: words that mean it is something else (control panel)', commas(f.not), { wide: true }));
+    }
+    grid.appendChild(text('note', 'Note (for people)', it.note, { area: true, wide: true }));
+    var err = el('p', { class: 'mr-error', role: 'alert', hidden: true });
+    function collect() {
+      var out = { id: it.id || null, level: it.level, component: it.level === 'type' ? inputs.component.value : '', title: inputs.title.value.trim(), note: inputs.note.value.trim(), fields: {} };
+      var L = function (x) { return splitList(x); };
+      if (it.level === 'type') {
+        out.fields = { kind: inputs.kind.value, terms: L(inputs.terms.value), anchors: L(inputs.anchors.value), unit: inputs.unit.value.trim().toLowerCase().replace(/\s+/g, ''),
+          dir: inputs.dir.value, scale: inputs.scale.value.split(/\s*(?:<|,|;)\s*/).map(function (x) { return x.trim(); }).filter(Boolean),
+          standards: L(inputs.standards.value), options: L(inputs.options.value), not: L(inputs.not.value),
+          rows: inputs.rows.value.split(';').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean),
+          equivalents: inputs.equivalents.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean), example: inputs.example.value.trim() };
+      } else {
+        out.fields = { terms: L(inputs.terms.value) };
+        if (it.level === 'component') out.fields.not = L(inputs.not.value);
+      }
+      if (it.level === 'component') out.component = out.title;
+      return out;
+    }
+    function save(verified) {
+      var item = collect(), msg = window.PRVocab.checkItem(item);
+      if (msg) { err.textContent = 'Not saved: ' + msg + '.'; err.hidden = false; return; }
+      err.hidden = true;
+      if (verified != null) item.verified = verified;
+      return Api.rpc('projects_vocab_save', { p_product_id: V.product, p_item: item }).then(function () {
+        Core.toast(verified ? 'Saved and verified.' : 'Saved.', 'success'); refresh();
+      }, function (e) { err.textContent = vocabError(e); err.hidden = false; });
+    }
+    var b = function (label, fn, cls) { return el('button', { type: 'button', class: 'btn small' + (cls ? ' ' + cls : ''), text: label, on: { click: function (ev) { Core.busy(ev.currentTarget, fn); } } }); };
+    return el('div', { class: 'stack mr-vb-form' }, grid, err,
+      el('div', { class: 'row' },
+        b('Save', function () { return save(null); }, 'primary'),
+        it.id && !it.verified ? b('Save and verify', function () { return save(true); }) : null,
+        it.id && it.verified ? b('Back to verify', function () { return verify([it.id], false); }) : null,
+        it.id ? b('Remove', function () { return remove(it); }, 'ghost') : null,
+        !it.id ? b('Cancel', function () { refresh(); }, 'ghost') : null));
+  }
+  function vocabError(e) {
+    var m = Core.errorMessage(e), code = e && (e.code || e.message) || '';
+    if (/INVALID:duplicate/.test(code + m)) return 'Another item has the same name here.';
+    if (/INVALID:component/.test(code + m)) return 'Its component is not in the list: add the component first.';
+    return m;
+  }
+  function refresh() {
+    var id = V.product;
+    return vocabItems(id, true).then(function (items) { V.lastItems = items; if (id === V.product) drawVocab(items); });
+  }
+  function verify(ids, yes) {
+    var go = ids ? Promise.resolve(true) : Core.confirm('Every item of ' + productName(V.product) + ' waiting to be verified is read by the record from now on (when the product is matched by its vocabulary). Check them with Try a clause first.', { title: 'Verify all?', ok: 'Verify all' });
+    return go.then(function (ok) {
+      if (!ok) return;
+      return Api.rpc('projects_vocab_verify', { p_product_id: V.product, p_ids: ids, p_verified: yes }).then(function (r) {
+        Core.toast((r && r.changed || 0) + (yes ? ' verified.' : ' back to verify.'), 'success'); return refresh();
+      }, function (e) { Core.showError(e); });
+    });
+  }
+  function remove(it) {
+    var text = it.level === 'component' ? 'Remove the component "' + it.title + '" and every type under it?' : 'Remove "' + it.title + '"?';
+    return Core.confirm(text, { title: 'Remove', ok: 'Remove', danger: true }).then(function (ok) {
+      if (!ok) return;
+      return Api.rpc('projects_vocab_delete', { p_product_id: V.product, p_ids: [it.id] }).then(function () { Core.toast('Removed.', 'success'); return refresh(); }, function (e) { Core.showError(e); });
+    });
+  }
+  function addItem(level, component) {
+    var it = { id: null, level: level, component: component || '', title: '', note: '', verified: false, fields: level === 'type' ? { kind: 'value' } : {} };
+    var box = el('section', { class: 'card stack' }, el('h3', { text: level === 'type' ? 'New type under ' + component : level === 'component' ? 'New component' : 'New standard' }), itemForm(it));
+    V.list.insertBefore(box, V.list.firstChild);
+    box.scrollIntoView({ block: 'start' }); var first = box.querySelector('input'); if (first) first.focus();
+  }
+  function importItems(items, replace) {
+    return Api.rpc('projects_vocab_import', { p_product_id: V.product, p_items: items, p_replace: !!replace }).then(function (r) {
+      Core.toast((r.added || 0) + ' added, ' + (r.updated || 0) + ' replaced' + (r.removed ? ', ' + r.removed + ' removed' : '') + '. Everything imported waits to be verified.', 'success');
+      return refresh();
+    }, function (e) { Core.showError(e); });
+  }
+  function loadStarter() {
+    var items = (window.PRVocabStarter || {})[V.product] || [];
+    if (!items.length) return;
+    Core.confirm('Adds the old tool\'s ' + productName(V.product) + ' vocabulary: ' + items.filter(function (x) { return x.level === 'type'; }).length + ' requirement types, '
+      + items.filter(function (x) { return x.level === 'component'; }).length + ' components and ' + items.filter(function (x) { return x.level === 'standard'; }).length
+      + ' standards, all waiting to be verified. An item you already have with the same name is replaced by the starter one (and waits again).', { title: 'Load the starter vocabulary', ok: 'Load' })
+      .then(function (ok) { if (ok) return importItems(items, false); });
+  }
+  function importOutline() {
+    var ta = el('textarea', { rows: 12, class: 'mr-text', spellcheck: 'false', placeholder: 'Casing\n  ! Terms: casing, panels\n  Panel thickness\n    ! Kind: value\n    ! Terms: panel thickness\n    ! Unit: mm\n    ! Direction: higher is better\n    ! Row: unit data||panel' });
+    var rep = el('input', { type: 'checkbox' }), info = el('p', { class: 'muted small', 'aria-live': 'polite', text: 'Paste an outline: two spaces per level, "> " a note, "! Field: ..." a field (the old map\'s Export).' });
+    var parsed = { items: [], problems: [] };
+    ta.addEventListener('input', function () {
+      parsed = window.PRVocab.fromOutline(ta.value);
+      info.textContent = parsed.items.length + ' items read' + (parsed.problems.length ? '; ' + parsed.problems.length + ' lines skipped: ' + parsed.problems.slice(0, 3).join(' ') + (parsed.problems.length > 3 ? ' …' : '') : '') + '. They will wait to be verified.';
+    });
+    Core.sheet({ title: 'Import outline into ' + productName(V.product), body: el('div', { class: 'stack mr-vb-sheet' }, ta, info, el('label', { class: 'check' }, rep, ' Replace the whole vocabulary of ' + productName(V.product))),
+      actions: [{ label: 'Cancel', value: false }, { label: 'Import', kind: 'primary', value: true }] }).then(function (ok) {
+      if (!ok) return;
+      if (!parsed.items.length) { Core.toast('Nothing to import.', 'danger'); return; }
+      return importItems(parsed.items, rep.checked);
+    });
+  }
+  function exportOutline() {
+    vocabItems(V.product).then(function (items) {
+      var text = window.PRVocab.toOutline(items, productName(V.product));
+      var ta = el('textarea', { rows: 14, class: 'mr-text', readonly: true, spellcheck: 'false' }); ta.value = text;
+      Core.sheet({ title: 'Outline of ' + productName(V.product), body: el('div', { class: 'stack mr-vb-sheet' }, ta, el('p', { class: 'muted small', text: 'The same outline imports back. Copy it, or download it as a text file.' })),
+        actions: [{ label: 'Close', value: false }, { label: 'Download .txt', kind: 'primary', value: true }] }).then(function (dl) {
+        if (dl) Core.download('Vocabulary ' + productName(V.product) + ' - outline.txt', new Blob(['﻿' + text.replace(/\n/g, '\r\n')], { type: 'text/plain;charset=utf-8' }));
+      });
+    });
+  }
+  // the mapping rows as suggestions for Row:
+  function rowSuggestions() {
+    state.products.forEach(function (p) {
+      rulesOf(p.id).then(function (rules) {
+        if (document.getElementById('vb-rows-' + p.id)) return;
+        document.body.appendChild(el('datalist', { id: 'vb-rows-' + p.id }, rules.map(function (r) { return el('option', { value: r.key }); })));
+      }, function () {});
+    });
+  }
+
+  /* Try a clause: what the vocabulary recognises, beside the keywords */
+  function tryVocab(productId, text, head, rules) {
+    var box = el('div', { class: 'mr-try-vocab' }, el('h3', { text: 'By the vocabulary' }), el('p', { class: 'muted', text: 'Reading the vocabulary…' }));
+    tryOut.appendChild(box);
+    vocabItems(productId).then(function (items) {
+      var v = window.PRVocab.build(items, true), found = window.PRVocab.identify(v, text, head, 3);
+      var names = {}; rules.forEach(function (r) { names[r.key] = (String(r.label || '').trim() || r.component) + ' (' + r.section + (r.sub ? ' / ' + r.sub : '') + ')'; });
+      var on = state.draft.vocab_products.indexOf(productId) >= 0;
+      box.removeChild(box.lastChild);
+      box.appendChild(el('p', { class: 'muted', text: (on ? productName(productId) + ' is matched by its vocabulary (on this page). ' : productName(productId) + ' is matched by Spec keywords; this is what the vocabulary would find. ')
+        + 'Types still to verify are shown too, marked; the record reads verified types only.' }));
+      if (!v.types.length) { box.appendChild(el('p', { class: 'muted', text: 'No vocabulary for ' + productName(productId) + ' yet (tab Vocabulary).' })); return; }
+      if (!found.length) { box.appendChild(el('p', { class: 'muted', text: 'No requirement type recognised (each needs a score of ' + window.PRVocab.MIN_SCORE + ' or more).' })); return; }
+      box.appendChild(el('ul', { class: 'mr-hits' }, found.map(function (x) {
+        var rowsTxt = x.type.rows.length ? x.type.rows.map(function (r) { var ref = window.PRVocab.rowRef(r); return (names[ref.key] || ref.key + ' (not in the row mapping)') + (ref.n ? ' #' + ref.n : ''); }).join('; ') : 'no datasheet row';
+        return el('li', {}, el('strong', { text: x.type.title }), ' (' + x.type.component + ') - score ' + x.score + ', ' + x.confidence + (x.asked ? ' · asks: ' + x.asked : ''),
+          x.type.verified ? null : el('span', { class: 'badge warning mr-vb-badge', text: 'to verify' }),
+          el('span', { class: 'faint small mr-kw', text: 'landmarks: ' + x.landmarks.join(', ') + ' · row: ' + rowsTxt }));
+      })));
+    }, function (err) { box.removeChild(box.lastChild); box.appendChild(el('p', { class: 'muted', text: 'The vocabulary could not be read: ' + Core.errorMessage(err) })); });
+  }
 
   /* ---------- try a clause ---------- */
   var tryOut;
@@ -356,7 +652,7 @@
       });
       hits.sort(function (a, b) { return b.s - a.s; }); stopped.sort(function (a, b) { return b.s - a.s; });
       var top = hits.length ? hits[0].s : 0;
-      tryOut.appendChild(el('h3', { text: hits.length ? 'Datasheet rows it finds' : 'No datasheet row finds it' }));
+      tryOut.appendChild(el('h3', { text: hits.length ? 'By Spec keywords: the datasheet rows it finds' : 'By Spec keywords: no datasheet row finds it' }));
       if (hits.length) tryOut.appendChild(el('ul', { class: 'mr-hits' }, hits.slice(0, 20).map(function (h) {
         var weak = h.s * 100 < top * state.draft.keep_share;
         return el('li', { class: weak ? 'mr-weak' : '' }, el('strong', { text: h.name }), ' - score ' + h.s + (weak ? ' (would be dropped: below ' + state.draft.keep_share + '% of the best, if the rows sit in one clause)' : ''),
@@ -380,6 +676,7 @@
             r.condition ? ' - a condition, not a requirement' : ' - ' + OP[r.op] + (p ? ' · ' + p.name + ', ' + DIRECTIONS.filter(function (d) { return d[0] === p.direction; })[0][1].toLowerCase() : ' · no property names it: only an exact match counts'));
         }),
         classes.map(function (cl2) { return el('li', {}, el('strong', { text: cl2.cls }), ' - ' + cl2.prop.name + ', this class or better (scale ' + commas(cl2.prop.scale) + ')'); })));
+      tryVocab(productId, text, head, rules);
       S.apply(state.current);
     }, function (err) { Core.clear(tryOut); tryOut.appendChild(el('p', { class: 'mr-error', text: Core.errorMessage(err) })); });
   }
@@ -394,6 +691,8 @@
   function summary(key, v) {
     if (v === null || v === undefined) return 'built-in (' + summary(key, S.DEFAULTS[key]) + ')';
     if (typeof v === 'number') return String(v);
+    if (typeof v === 'boolean') return v ? 'yes' : 'no';
+    if (key === 'vocab_products') return v.length ? v.map(productName).join(', ') : 'none (keywords)';
     if (key === 'topics') return v.length + ' topics';
     if (key === 'properties') return v.length + ' properties';
     if (key === 'section_topics') return v.length + ' sections';
@@ -478,6 +777,7 @@
     if (!s.ok) { var off = $('#mr-off'); off.hidden = false; off.textContent = 'The saved settings could not be read, so the built-in values are shown and saving is off. If SQL 010 (db/projects/010_matching_rules.sql) has not been run yet, run it; otherwise reload the page.'; }
     buildPanels();
     refreshBar();
+    rowSuggestions();
     var want = (window.location.hash || '').replace('#', '');
     if (panels[want]) showTab(want);
   }).catch(function (err) { Core.showError(err); });

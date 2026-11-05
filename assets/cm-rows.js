@@ -124,7 +124,7 @@
       var heads = [topicOf(cands[1]), topicOf(cands[2])], topic = '';
       for (var k = 0; k < heads.length && !topic; k++) if (heads[k] && GENERAL.indexOf(heads[k]) < 0) topic = heads[k];
       topic = topic || topicOf(cands[0]) || heads[0] || heads[1] || topicOf(cands[3]);
-      out.push({ row: i, part: part, ref: ref.trim(), text: text, ctx: words(ctx),
+      out.push({ row: i, part: part, ref: ref.trim(), text: text, ctx: words(ctx), heading: ctx.trim(), sec: sec ? sec.text : '',
                  toks: words(text).filter(function (w) { return !/^\d+$/.test(w); }), topic: topic });
     });
     return out;

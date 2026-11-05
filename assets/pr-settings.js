@@ -87,7 +87,11 @@
     figure_words: 8,             // a figure in the clause belongs to a row when one of the row's keywords stands within this many words of it
     option_values: 40,           // approved values kept per row (most seen first)
     candidates_shown: 12,        // values carried to the Selection list per row
-    choose_listed: 3             // values named in a "choose:" or "none seen meets it" chip
+    choose_listed: 3,            // values named in a "choose:" or "none seen meets it" chip
+
+    /* ---- 3. The vocabulary (011, pr-vocab.js) ---- */
+    vocab_products: [],          // products matched by their verified vocabulary; a row no verified type points at keeps its Spec keywords
+    vocab_fallback: true         // a row the vocabulary covers but finds no clause for in this specification: its Spec keywords are used
   };
 
   var ORDER = Object.keys(DEFAULTS);
@@ -132,6 +136,10 @@
     if (key === 'parts') {
       return Array.isArray(v) && v.length >= 1 && v.length <= 5 && v.every(function (n, k) { return typeof n === 'number' && Math.floor(n) === n && n >= 1 && n <= 9 && v.indexOf(n) === k; })
         ? '' : '1 to 5 different Part numbers from 1 to 9';
+    }
+    if (key === 'vocab_fallback') return typeof v === 'boolean' ? '' : 'yes or no';
+    if (key === 'vocab_products') {
+      return Array.isArray(v) && v.length <= 20 && v.every(function (s, i) { return typeof s === 'string' && /^[a-z0-9_-]{1,40}$/.test(s) && v.indexOf(s) === i; }) ? '' : 'product ids';
     }
     if (key === 'heading_verbs') return strList(v, 20, function (s) { return /^[a-z]{2,20}$/.test(s); }) ? '' : 'single words of small letters';
     if (key === 'properties') {
