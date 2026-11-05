@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-loading>
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cykpvtekrdfmqimtrcps.supabase.co; connect-src 'self' https://cykpvtekrdfmqimtrcps.supabase.co; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Product Options - DAME HUB</title>
+<link rel="stylesheet" href="/dame-hub/core/v1/theme.css">
+<link rel="stylesheet" href="/projects/assets/pr.css">
+<link rel="stylesheet" href="/projects/assets/pr-legacy.css">
+<link rel="stylesheet" href="/projects/assets/po.css">
+<link rel="icon" href="/dame-hub/core/v1/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/dame-hub/core/v1/icons/apple-touch-icon.png">
+<script src="/dame-hub/core/v1/config.js" defer></script>
+<script src="/dame-hub/core/v1/api.js" defer></script>
+<script src="/dame-hub/core/v1/core.js" defer></script>
+<script src="/projects/assets/pr-common.js" defer></script>
+<script src="/projects/assets/pr-hub.js" defer></script>
+<script src="/projects/assets/pr-picks.js" defer></script>
+<script src="/projects/assets/ds-parse.js" defer></script>
+<script src="/projects/assets/ds-fcu.js" defer></script>
+<script src="/projects/assets/po-xlsx.js" defer></script>
+<script src="/projects/assets/product-options.js" defer></script>
+</head>
+<body class="pr-legacy">
+<header id="topbar"></header>
+<main class="page">
+  <div class="page-head">
+    <p class="small"><a href="/projects/">&larr; Projects</a></p>
+    <h1>Product Options</h1>
+    <p>What each factory has offered so far: sections, components and their options, from the datasheets read in the projects, plus special options and notes from the team. The rows and their wording follow the product's row mapping, which is the same for every factory and every user.</p>
+  </div>
+
+  <div class="stack">
+    <section class="card stack" aria-labelledby="h-pick">
+      <div class="po-head">
+        <h2 id="h-pick">Product and factory</h2>
+        <a class="btn ghost sm" id="po-mapping" href="/projects/mapping.html" hidden>Row mapping</a>
+      </div>
+      <div class="po-pick">
+        <label class="field"><span>Product</span>
+          <select class="input" id="po-product" disabled><option value="">Loading…</option></select></label>
+        <label class="field"><span>Factory</span>
+          <select class="input" id="po-factory" disabled><option value="">Choose a product first</option></select></label>
+        <label class="field"><span>Search</span>
+          <input class="input" id="po-search" type="search" placeholder="e.g. filter, copper, IE4" autocomplete="off" disabled></label>
+      </div>
+      <p class="hint" id="po-hint" role="status">Choose a product and a factory.</p>
+    </section>
+
+    <section class="card stack" id="po-result" aria-labelledby="h-tree" hidden>
+      <div class="po-bar">
+        <div>
+          <h2 id="h-tree">Options tree</h2>
+          <div class="po-facts" id="po-facts"></div>
+        </div>
+        <div class="row">
+          <button type="button" class="btn ghost sm po-toggle" id="po-edit" aria-pressed="false" title="Edit the tree: special options, notes, take out values, leave out rows" hidden>Edit</button>
+          <button type="button" class="btn ghost sm" id="po-open">Expand all</button>
+          <button type="button" class="btn ghost sm" id="po-close">Collapse all</button>
+          <button type="button" class="btn sm" id="po-download">Download Excel</button>
+        </div>
+      </div>
+      <div class="notice" id="po-edit-note" hidden>Edit is on. Add a special option or a note to a section or a row, and take out values or rows that are not options (airflow, pressure drop). Tick several rows to leave them out together. "Leave out row" applies to every factory of this product; everything else is for this factory only. Whether a row is an option or a duty figure is set on the Row mapping page (In Product Options) or here (Move to duty figures / Move to options).</div>
+      <div class="notice warn" id="po-wait" role="status" hidden></div>
+      <div class="notice error" id="po-error" role="alert" hidden></div>
+      <div class="empty" id="po-empty" hidden></div>
+      <div id="po-tree-host"></div>
+      <div class="po-pickbar" id="po-pickbar" role="region" aria-label="Ticked rows" hidden></div>
+      <p class="hint">Values are as printed on the datasheets read so far, for the rows the product's row mapping shows (one mapping per product, the same for every factory and every user). "Seen n times" is how often the value turned up; a datasheet read again is counted again. Duty figures (flows, pressures, sizes ...) are what was selected so far, shown from lowest to highest; they are not options and not limits.
+        A value not listed here is not known yet, it does not mean the factory cannot offer it. Confirm special requests with the factory.</p>
+    </section>
+
+    <!-- super user: clean the Product Options of the product (or factory) chosen above (projects_po_reset) -->
+    <section class="card stack clean-card" id="po-clean" aria-labelledby="h-clean" hidden>
+      <h2 id="h-clean">Clean Product Options</h2>
+      <p class="muted small" id="po-clean-what">Choose a product above.</p>
+      <p class="small">Deletes every value read from datasheets for this factory (or, with no factory chosen, every factory of the product), approved or waiting. The next datasheet read brings them back, waiting for approval. The row mapping, the compliance library and the projects' datasheet tables are not touched. It cannot be undone: download the Excel first if you may need it.</p>
+      <label class="check"><input type="checkbox" id="po-clean-extras"> Also delete the special options, notes and makes typed by the team</label>
+      <div class="row"><button type="button" class="btn danger" id="po-clean-go" disabled>Clean Product Options</button></div>
+      <div class="notice" id="po-clean-msg" role="status" hidden></div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

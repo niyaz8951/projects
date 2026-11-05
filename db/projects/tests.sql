@@ -1,4 +1,4 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 007. Rolled back.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 008. Rolled back.
 -- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
 -- demo_user with 'edit') and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
@@ -442,6 +442,140 @@ begin
   if (v -> 'counts' ->> 'review')::int < 1 then raise exception 'reset sends the users'' answers back to review'; end if;
   reset role;
   update core.profiles set is_super = false where id = (select id from t_ids where k = 'demo_admin');
+
+  -- Product Options (008). Riyadh has panel 62 / 50 mm, filter class G4 and two filter sizes, all waiting.
+  perform pg_temp.act_as('demo_user');   -- 'edit' only: reads the approved values, changes nothing
+  select public.projects_po_tree('ahu-riyadh') into v;
+  if (v ->> 'can_edit')::boolean or (v ->> 'can_approve')::boolean or jsonb_array_length(v -> 'sections') <> 0 then raise exception 'po_tree user flags: %', v; end if;
+  if (select count(*) from jsonb_array_elements(v -> 'rows') r, jsonb_array_elements(r -> 'values') x) <> 0 then raise exception 'po_tree user sees waiting values'; end if;
+  if (v -> 'factory' ->> 'product') <> 'AHU' or (v -> 'factory' ->> 'name') <> 'Riyadh' then raise exception 'po_tree factory'; end if;
+  perform pg_temp.expect_error('select public.projects_po_tree(''nowhere'')', 'INVALID:factory_id');
+  perform pg_temp.expect_error('select public.projects_po_approve(''ahu-riyadh'', null, true, true)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_save_extra(''ahu-riyadh'', null, ''Unit Data'', '''', ''note'', ''x'')', 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_po_delete_extra(%L)', gen_random_uuid()), 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_set_hidden(''ahu-riyadh'', ''unit data||panel'', ''62 mm'', '''', '''', true)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_set_rows_hidden(''ahu-riyadh'', ''["unit data||panel"]'', true)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_set_place(''ahu-riyadh'', ''["unit data||panel"]'', ''general'', '''')', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_set_kind(''ahu-riyadh'', ''["unit data||panel"]'', ''duty'')', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_clear_ungrouped(''ahu-riyadh'', ''Unit Data'', null, null)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_reset(''ahu'', null, false)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_dn_save_rules(''ahu'', ''[]'', ''[]'', true)', 'NO_RIGHT');
+  reset role;
+  perform pg_temp.act_as('demo_pending');
+  perform pg_temp.expect_error('select public.projects_po_tree(''ahu-riyadh'')', 'NOT_APPROVED');
+  reset role;
+  perform pg_temp.act_as(null);
+  perform pg_temp.expect_error('select public.projects_po_tree(''ahu-riyadh'')', 'PERMISSION');
+  reset role;
+
+  perform pg_temp.act_as('demo_admin');   -- tile admin: holds 'review'
+  select public.projects_po_tree('ahu-riyadh') into v;
+  if not (v ->> 'can_approve')::boolean then raise exception 'po_tree admin can_approve'; end if;
+  if (select count(*) from jsonb_array_elements(v -> 'rows') r, jsonb_array_elements(r -> 'values') x where not (x ->> 'approved')::boolean) <> 5 then raise exception 'po_tree admin sees the 5 waiting values: %', v -> 'rows'; end if;
+  if not (v -> 'sections' ? 'Unit Data') or (v -> 'sections' ? 'General') then raise exception 'po_tree sections: %', v -> 'sections'; end if;
+  select public.projects_po_approve('ahu-riyadh', '[{"key":"unit data||panel","model":"","grp":"","value_key":"62 mm"}]', false, true) into v;
+  if (v ->> 'changed')::int <> 1 then raise exception 'approve one'; end if;
+  perform pg_temp.expect_error('select public.projects_po_approve(''ahu-riyadh'', ''[{"key":"unit data||panel","model":"","grp":"","value_key":"62 mm"}]'', false, true)', 'INVALID:nothing');
+  perform pg_temp.expect_error('select public.projects_po_approve(''ahu-riyadh'', ''[]'', false, true)', 'INVALID:items');
+  select public.projects_po_approve('ahu-riyadh', '[{"key":"unit data||panel","model":"","grp":"","value_key":"50 mm"}]', false, false) into v;
+  if (v ->> 'changed')::int <> 1 then raise exception 'reject one'; end if;
+  select public.projects_po_save_extra('ahu-riyadh', null, ' Unit  Data ', 'unit data||panel', 'option', ' 75 mm panel on request ') into v;
+  v_line := (v ->> 'id')::uuid;
+  perform public.projects_po_save_extra('ahu-riyadh', v_line, 'Unit Data', 'unit data||panel', 'option', '75 mm panel on request (confirm with the factory)');
+  perform public.projects_po_save_extra('ahu-riyadh', null, 'Fan Supply', 'family:EC Fans', 'make', 'Sample Fans Ltd');
+  perform pg_temp.expect_error('select public.projects_po_save_extra(''ahu-riyadh'', null, ''Unit Data'', '''', ''ai'', ''x'')', 'INVALID:kind');
+  perform pg_temp.expect_error('select public.projects_po_save_extra(''ahu-riyadh'', null, ''Unit Data'', '''', ''note'', ''  '')', 'INVALID:body');
+  perform pg_temp.expect_error('select public.projects_po_save_extra(''ahu-riyadh'', null, '''', '''', ''note'', ''x'')', 'INVALID:section');
+  perform pg_temp.expect_error(format('select public.projects_po_save_extra(''ahu-riyadh'', null, ''Fan'', '''', ''make'', %L)', repeat('x', 121)), 'INVALID:make');
+  perform pg_temp.expect_error(format('select public.projects_po_save_extra(''ahu-riyadh'', %L, ''Unit Data'', '''', ''note'', ''x'')', gen_random_uuid()), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.projects_po_save_extra(''ahu-dubai'', %L, ''Unit Data'', '''', ''note'', ''x'')', v_line), 'NOT_FOUND');   -- another factory's entry
+  reset role;
+  perform pg_temp.act_as('demo_user');   -- now sees the approved value and the special options
+  select public.projects_po_tree('ahu-riyadh') into v;
+  if (select string_agg(x ->> 'v', ',') from jsonb_array_elements(v -> 'rows') r, jsonb_array_elements(r -> 'values') x) <> '62 mm' then raise exception 'user sees the approved value only: %', v -> 'rows'; end if;
+  if jsonb_array_length(v -> 'extras') <> 2 or (v -> 'extras' -> 0 ->> 'body') <> '75 mm panel on request (confirm with the factory)'
+     or (v -> 'extras' -> 0 ->> 'section') <> 'Unit Data' or (v -> 'extras' -> 0 ->> 'by') <> 'demo_admin' then raise exception 'extras: %', v -> 'extras'; end if;
+  select public.projects_po_approved('ahu-riyadh') into v;
+  if jsonb_array_length(v -> 'values') <> 1 then raise exception 'po_approved after approval'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_admin');
+  perform public.projects_po_set_hidden('ahu-riyadh', 'unit data||panel', '62 mm', '', '', true);
+  perform pg_temp.expect_error('select public.projects_po_set_hidden(''ahu-riyadh'', ''unit data||panel'', ''99 mm'', '''', '''', true)', 'NOT_FOUND');
+  reset role;
+  perform pg_temp.act_as('demo_user');
+  select public.projects_po_approved('ahu-riyadh') into v;
+  if jsonb_array_length(v -> 'values') <> 0 then raise exception 'a value taken out is not offered'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_admin');
+  perform public.projects_po_set_hidden('ahu-riyadh', 'unit data||panel', '62 mm', '', '', false);
+  select public.projects_po_set_rows_hidden('ahu-riyadh', '["filter supply||filter class", " filter supply||filter class "]', true) into v;
+  if (v ->> 'changed')::int <> 1 then raise exception 'rows hidden: %', v; end if;
+  perform pg_temp.expect_error('select public.projects_po_set_rows_hidden(''ahu-riyadh'', ''[]'', true)', 'INVALID:row_keys');
+  perform pg_temp.expect_error('select public.projects_po_set_rows_hidden(''ahu-riyadh'', ''["no such row"]'', true)', 'NOT_FOUND');
+  select public.projects_po_tree('ahu-riyadh') into v;
+  if not (select (r ->> 'hidden')::boolean from jsonb_array_elements(v -> 'rows') r where r ->> 'key' = 'filter supply||filter class') then raise exception 'admin sees the left-out row'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_user');
+  select public.projects_po_tree('ahu-riyadh') into v;
+  if exists (select 1 from jsonb_array_elements(v -> 'rows') r where r ->> 'key' = 'filter supply||filter class') then raise exception 'user never sees a left-out row'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_admin');
+  perform public.projects_po_set_rows_hidden('ahu-riyadh', '["filter supply||filter class"]', false);
+  perform public.projects_po_set_place('ahu-riyadh', '["unit data||panel"]', 'general', '');
+  perform public.projects_po_set_place('ahu-riyadh', '["unit data||panel"]', 'model', 'FWWVA');
+  perform pg_temp.expect_error('select public.projects_po_set_place(''ahu-riyadh'', ''["unit data||panel"]'', ''left'', '''')', 'INVALID:place');
+  perform public.projects_po_set_kind('ahu-riyadh', '["unit data||panel"]', 'duty');
+  perform pg_temp.expect_error('select public.projects_po_set_kind(''ahu-riyadh'', ''["unit data||panel"]'', ''accessory'')', 'INVALID:kind');
+  select public.projects_po_tree('ahu-riyadh') into v;
+  if (select r ->> 'kind_set' || '/' || (r ->> 'place') from jsonb_array_elements(v -> 'rows') r where r ->> 'key' = 'unit data||panel') <> 'duty/general' then raise exception 'kind and place'; end if;
+  if (v -> 'series_place' -> 0 ->> 'series') <> 'FWWVA' or (v -> 'series_place' -> 0 ->> 'place') <> 'model' then raise exception 'series place: %', v -> 'series_place'; end if;
+  perform public.projects_po_set_place('ahu-riyadh', '["unit data||panel"]', '', 'FWWVA');
+  perform public.projects_po_set_kind('ahu-riyadh', '["unit data||panel"]', '');
+  select public.projects_po_tree('ahu-riyadh') into v;
+  if jsonb_array_length(v -> 'series_place') <> 0 then raise exception 'series place removed'; end if;
+  select public.projects_po_clear_ungrouped('ahu-riyadh', 'Filter Supply', '[{"key":"filter supply||dimensions","grp":"Filter Class: ISO Coarse 60%(G4)"}]', null) into v;
+  if (v ->> 'removed')::int <> 2 then raise exception 'clear_ungrouped drop: %', v; end if;
+  perform pg_temp.expect_error('select public.projects_po_clear_ungrouped(''ahu-riyadh'', ''Unit Data'', null, null)', 'INVALID:nothing');
+  perform pg_temp.expect_error('select public.projects_po_clear_ungrouped(''ahu-riyadh'', '' '', null, null)', 'INVALID:section');
+  select public.projects_po_approve('ahu-riyadh', null, true, true) into v;
+  if (v ->> 'changed')::int <> 1 then raise exception 'approve all: %', v; end if;   -- the filter class
+  perform pg_temp.expect_error('select public.projects_po_approve(''ahu-riyadh'', null, true, true)', 'INVALID:nothing');
+  perform public.projects_po_delete_extra(v_line);
+  -- the row mapping
+  select public.projects_dn_save_rules('ahu',
+    '[{"key":"unit data||panel","section":"Unit Data","sub":"","component":"Panel","show":true,"label":"Panel thickness","strip":"","response":"","keywords":"double wall; panel","kind":"option","place":"model"},
+      {"key":"new section||row","section":"New Section","sub":"","component":"Row","show":false,"label":"","strip":"","response":"","keywords":""},
+      {"key":"new section||row","section":"Twice","sub":"","component":"Row"}]',
+    '["made up||row"]', false) into v;
+  if (v ->> 'saved')::int <> 2 or (v ->> 'removed')::int <> 1 then raise exception 'dn_save_rules: %', v; end if;
+  select public.projects_dn_rules('ahu') into v;
+  if (v ->> 'show_unmapped')::boolean then raise exception 'show_unmapped saved'; end if;
+  if exists (select 1 from jsonb_array_elements(v -> 'rules') x where x ->> 'key' = 'made up||row') then raise exception 'removed row'; end if;
+  if (select x ->> 'label' || '|' || (x ->> 'kind') || '|' || (x ->> 'place') || '|' || (x ->> 'new') from jsonb_array_elements(v -> 'rules') x where x ->> 'key' = 'unit data||panel')
+     <> 'Panel thickness|option|model|false' then raise exception 'saved rule: %', v -> 'rules'; end if;
+  if (select (x ->> 'show') || '|' || (x ->> 'section') || '|' || (x ->> 'keywords') from jsonb_array_elements(v -> 'rules') x where x ->> 'key' = 'new section||row')
+     <> 'false|New Section|' then raise exception 'new rule, first of a repeated key wins'; end if;
+  -- a rule without kind keeps the stored kind
+  perform public.projects_dn_save_rules('ahu', '[{"key":"unit data||panel","section":"Unit Data","component":"Panel","label":"Panel thickness","keywords":"double wall; panel"}]', '[]', false);
+  select public.projects_dn_rules('ahu') into v;
+  if (select x ->> 'kind' from jsonb_array_elements(v -> 'rules') x where x ->> 'key' = 'unit data||panel') <> 'option' then raise exception 'kind kept'; end if;
+  -- starter keywords for rows new to a mapping that has none (FCU), once
+  perform public.projects_dn_save_rules('fcu', '[{"key":"general||power supply","section":"General","component":"Power Supply"}]', '[]', true);
+  select public.projects_dn_rules('fcu') into v;
+  if (v -> 'rules' -> 0 ->> 'keywords') not like 'power supply;%' then raise exception 'starter keywords on save: %', v; end if;
+  perform pg_temp.expect_error('select public.projects_dn_save_rules(''ahu'', ''[{"key":"x","kind":"accessory"}]'', ''[]'', true)', 'INVALID:rules');
+  perform pg_temp.expect_error('select public.projects_dn_save_rules(''ahu'', ''[{"key":""}]'', ''[]'', true)', 'INVALID:rules');
+  perform pg_temp.expect_error('select public.projects_dn_save_rules(''boiler'', ''[]'', ''[]'', true)', 'INVALID:product_id');
+  perform pg_temp.expect_error('select public.projects_po_reset(''ahu'', null, true)', 'NO_RIGHT');   -- a tile admin is not the super user
+  reset role;
+  update core.profiles set is_super = true where id = (select id from t_ids where k = 'demo_admin');
+  perform pg_temp.act_as('demo_admin');
+  perform pg_temp.expect_error('select public.projects_po_reset(''ahu'', ''fcu-riyadh'', true)', 'INVALID:factory_id');
+  select public.projects_po_reset('ahu', 'ahu-riyadh', true) into v;
+  if (v ->> 'values_removed')::int <> 2 or (v ->> 'extras_removed')::int <> 1 then raise exception 'po_reset: %', v; end if;
+  reset role;
+  update core.profiles set is_super = false where id = (select id from t_ids where k = 'demo_admin');
+  if (select count(*) from projects.dn_map where product_id = 'ahu') = 0 then raise exception 'reset keeps the mapping'; end if;
 
   -- sharing (003): only a tile admin or the super user shares; a member sees, opens and edits, cannot share on
   perform pg_temp.act_as('demo_user'); -- creator, not an admin

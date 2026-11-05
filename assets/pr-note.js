@@ -1,5 +1,5 @@
 /* Projects tile - one saved datasheet table (the old tools/projects/note.html, brought over 2026-11-05): find, only the
-   rows that differ, Download Excel. The row-name button that shows what the factory offers comes with Product Options (step 5). */
+   rows that differ, Download Excel. A row name opens what the factory offers for that row (pr-options.js). */
 (function () {
   'use strict';
   var $ = Core.$, el = Core.el;
@@ -8,6 +8,11 @@
   function bare(name) { return String(name || '').split(', ').map(function (n) { return n.replace(/\.[A-Za-z0-9]{1,5}$/, ''); }).join(', ') || 'Datasheet'; }
   function differs(r) { return !!(r.marks && r.marks.some(Boolean)); }
 
+  /* A row name opens what the factory has offered for that row (pr-options.js): approved values, special options, notes. */
+  function rowName(r, section) {
+    return el('button', { type: 'button', class: 'pr-note-row', text: r.component, title: 'What the factory offers for this row',
+      on: { click: function () { PROptions.open({ productId: note.product_id, product: note.product, factory: note.factory || PROptions.factoryOf(note.rows), key: r.key, section: section, component: r.component, values: r.cells }); } } });
+  }
   function draw() {
     var q = $('#q').value.trim().toLowerCase(), only = $('#only').checked, units = note.columns.length;
     var unitW = units === 1 ? 320 : units > 12 ? 160 : 220, lead = narrow.matches ? [92, 116] : [170, 210];
@@ -29,7 +34,7 @@
           note.columns.map(function () { return el('td'); })));
         secDone = true; sub = null;
       }
-      frag.appendChild(el('tr', { class: secDone ? null : 'first' }, el('td', { class: 'sec', text: secDone ? '' : sec }), el('td', { text: r.component }),
+      frag.appendChild(el('tr', { class: secDone ? null : 'first' }, el('td', { class: 'sec', text: secDone ? '' : sec }), el('td', {}, rowName(r, sec)),
         (r.cells || []).map(function (v, u) {
           var mk = r.marks ? r.marks[u] : 0;
           return el('td', { text: v, class: mk ? 'diff d' + ((mk - 1) % 5 + 1) : null, title: mk ? 'Differs from ' + note.columns[0] : null });

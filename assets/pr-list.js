@@ -12,12 +12,10 @@
 
     $('#new').hidden = !canEdit;
     // the knowledge base: Compliance review and Product Options, for the reviewers (tile admins and the super user; the database decides)
-    var canReview = !!(me.is_super || me.tile_admin || (me.rights || []).indexOf('review') >= 0);
+    var canReview = PR.canReview(me);
     $('#review').hidden = !canReview; $('#options').hidden = !canReview;
     $('#review').addEventListener('click', function () { Core.go('/projects/library.html'); });
-    $('#options').addEventListener('click', function () {
-      PR.soon('Product Options', 5, 'What each factory has offered so far, per product and factory: the values collected from every datasheet read (waiting for approval), special options, hidden values and the row mapping. Comes in step 5. The values are already being collected from the datasheets read in step 2.');
-    });
+    $('#options').addEventListener('click', function () { Core.go('/projects/options.html'); });
     function intro() {
       $('#intro').textContent = 'A project holds the specifications and datasheets of one job. '
         + (seesAll ? 'You see every project of the team.' : 'You see your projects and the projects shared with you.');

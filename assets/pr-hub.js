@@ -1,5 +1,5 @@
 /* Projects tile - page shim for the pages brought over from Thinkneering (add a specification, the record, compare,
-   Focus mode, the matcher). Loaded right after pr-common.js, before those scripts. It gives them, on top of the
+   Focus mode, the matcher, Compliance review, Product Options and the row mapping). Loaded right after pr-common.js, before those scripts. It gives them, on top of the
    DAME core, the small Hub helpers they call (the Tools tile's tl.js pattern) and the old API names as calls to the
    tile's functions (Api.rpc('projects_*')). No sign-in, token, user or theme code is brought over: the core's guard,
    session and topbar are the only ones. Style attributes the old markup set are turned into node.style properties
@@ -196,7 +196,17 @@
     'INVALID:seq': 'That row cannot be answered. Reload the page.',
     'INVALID:answered': 'The library already has an answer for this clause, so it was kept. Change it in the Compliance and Remarks boxes if it needs correcting.',
     'INVALID:answer': 'An approved answer cannot be empty.',
-    'INVALID:decision': 'Unknown decision.'
+    'INVALID:decision': 'Unknown decision.',
+    'INVALID:nothing': 'Nothing waits or is left to remove there any more. Refresh the page.',
+    'INVALID:row_keys': 'Tick the rows first (up to 500 at a time).',
+    'INVALID:items': 'Choose the values first (up to 500 at a time).',
+    'INVALID:kind': 'Choose special option, note or make (or option / duty figure for a row).',
+    'INVALID:place': 'Choose general or per model.',
+    'INVALID:section': 'Give the section a name of up to 120 characters.',
+    'INVALID:body': 'Type the text first (up to 1000 characters).',
+    'INVALID:make': 'A make is a manufacturer\'s name of up to 120 characters.',
+    'INVALID:rules': 'The mapping could not be saved: every row needs a name; a name in Excel is up to 120 characters, a remove text 300, the keywords 600 and a response 1000.',
+    'NOT_FOUND': 'That no longer exists. Refresh the page.'
   };
   function rpc(name, params) {
     return core.rpc(name, params).then(null, function (err) {
@@ -236,10 +246,45 @@
       p_compliance: d.compliance == null ? null : d.compliance, p_remarks: d.remarks == null ? null : d.remarks });
   };
 
-  /* The old error messages are plain codes now: the pages show Api.errorMessage; an error object keeps .message. */
-  /* The Product Options panel of a row (pr-options.js) comes with step 5; until then its name opens a note. */
-  window.PROptions = {
-    sectionName: function (s) { return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim().replace(/^\d+\)\s*/, '').replace(/\s*\(\d+\)$/, ''); },
-    open: function (o) { return PR.soon('Product Options', 5, 'What the ' + (o && o.factory ? o.factory + ' factory' : 'factory') + ' has offered for "' + ((o && o.component) || 'this row') + '" opens here in step 5, with the special options and notes of the team.'); }
-  };
+  /* Product Options (step 5). The tree comes from projects_po_tree; what each row is (option / duty / accessory /
+     project / note, the old lib/po-kind.ts) and what waits for approval are worked out here, as the old po_get_tree
+     did on the server, so product-options.js and pr-options.js get the shape they were written for. */
+  function poTree(r) {
+    var K = window.PRPicks, rev = !!r.can_edit, waiting = 0, updated = null, extraKeys = {}, first = {}, rows = [], perRow = {};
+    (r.extras || []).forEach(function (x) { extraKeys[x.key] = 1; });
+    (r.rows || []).forEach(function (row) { row.values.forEach(function (v) { if (v.g && !(first[v.g] <= v.seq)) first[v.g] = v.seq; }); });
+    function gOrder(a, b) { return a === b ? 0 : a === '' ? -1 : b === '' ? 1 : (first[a] - first[b]) || a.localeCompare(b); }
+    (r.rows || []).forEach(function (row) {
+      var kind = K ? K.poKind(row.key, row.kind_set) : 'option';
+      if (kind === 'project' || kind === 'hide') return;
+      var duty = kind === 'duty', live = !row.hidden;
+      var list = row.values.slice().sort(function (a, b) { return a.model.localeCompare(b.model) || gOrder(a.g, b.g) || (b.n - a.n) || a.k.localeCompare(b.k); });
+      list.forEach(function (v) {
+        if (!v.approved && !v.hidden && !duty && live) waiting++;
+        if (updated === null || String(v.at) > updated) updated = String(v.at);
+        if (v.model !== '') { var pk = v.model + '\u0001' + row.key; perRow[pk] = (perRow[pk] || 0) + v.n; }
+      });
+      if (!list.length && !extraKeys[row.key]) return;
+      rows.push({ key: row.key, section: row.section, sub: row.sub, component: row.component, hidden: !!row.hidden, kind: kind, kind_set: row.kind_set || '', place: row.place || '',
+        values: list.map(function (v) { return { k: v.k, v: v.v, n: v.n, hidden: !!v.hidden, model: v.model, g: v.g, wait: !v.approved && !duty && live, held: !v.approved && !duty && !live }; }) });
+    });
+    var units = {};
+    Object.keys(perRow).forEach(function (k) { var m = k.split('\u0001')[0]; units[m] = Math.max(units[m] || 0, perRow[k]); });
+    function series(m) { return String(m).replace(/\s*-\s*[A-Z0-9]+$/i, '').replace(/\d+/g, ''); }
+    var models = Object.keys(units).map(function (m) { return { model: m, series: series(m), units: units[m] }; })
+      .sort(function (a, b) { return a.series.localeCompare(b.series) || (b.units - a.units) || a.model.localeCompare(b.model); });
+    return { factory: r.factory, can_edit: rev, can_approve: !!r.can_approve, waiting: rev ? waiting : 0, updated: updated, rows: rows, models: models,
+             series_place: r.series_place || [], extras: r.extras || [], sections: r.sections || [] };
+  }
+  core.poTree = function (t, factoryId) { return rpc('projects_po_tree', { p_factory_id: factoryId }).then(poTree); };
+  core.poAdminSaveExtra = function (t, d) { return rpc('projects_po_save_extra', { p_factory_id: d.factoryId, p_id: d.id || null, p_section: d.section, p_row_key: d.key || '', p_kind: d.kind, p_body: d.body }); };
+  core.poAdminDeleteExtra = function (t, id) { return rpc('projects_po_delete_extra', { p_id: id }); };
+  core.poAdminApprove = function (t, d) { return rpc('projects_po_approve', { p_factory_id: d.factoryId, p_items: d.items || null, p_all: !!d.all, p_approve: !!d.approve }); };
+  core.poReset = function (t, d) { return rpc('projects_po_reset', { p_product_id: d.productId, p_factory_id: d.factoryId || null, p_with_extras: !!d.withExtras }); };
+  core.poAdminClearUngrouped = function (t, d) { return rpc('projects_po_clear_ungrouped', { p_factory_id: d.factoryId, p_section: d.section, p_drop: d.drop || null, p_groups: d.groups || null }); };
+  core.poAdminSetHidden = function (t, d) { return rpc('projects_po_set_hidden', { p_factory_id: d.factoryId, p_row_key: d.key, p_value_key: d.valueKey || '', p_model: d.model || '', p_grp: d.grp || '', p_hidden: !!d.hidden }); };
+  core.poAdminSetRowsHidden = function (t, d) { return rpc('projects_po_set_rows_hidden', { p_factory_id: d.factoryId, p_row_keys: d.keys || [], p_hidden: !!d.hidden }); };
+  core.poAdminSetPlace = function (t, d) { return rpc('projects_po_set_place', { p_factory_id: d.factoryId, p_row_keys: d.keys || [], p_place: d.place || '', p_series: d.series || '' }); };
+  core.poAdminSetKind = function (t, d) { return rpc('projects_po_set_kind', { p_factory_id: d.factoryId, p_row_keys: d.keys || [], p_kind: d.kind || '' }); };
+  core.dnAdminSaveRules = function (t, d) { return rpc('projects_dn_save_rules', { p_product_id: d.productId, p_show_unmapped: d.showUnmapped !== false, p_rules: d.rules || [], p_remove: d.remove || [] }); };
 })();

@@ -5,6 +5,8 @@ window.PR = (function () {
   var PR = { TILE: 'projects' };
 
   PR.canEdit = function (me) { return !!me && (me.is_super || (me.rights || []).indexOf('edit') >= 0); };
+  // the knowledge base (Compliance review, Product Options, the row mapping): tile admins, the super user, or 'review'
+  PR.canReview = function (me) { return !!me && (me.is_super || me.tile_admin || (me.rights || []).indexOf('review') >= 0); };
 
   function fillSelect(select, values, first) {
     Core.clear(select);

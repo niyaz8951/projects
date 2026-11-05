@@ -502,7 +502,7 @@
   function sheetChips(sheet, l) {
     var blue = sheet.map(function (d) {
       return el("button", { type: "button", "class": "rc-chip", title: "From the datasheet. Press to see what the factory offers for this row.", onclick: function () {
-        PROptions.open({ productId: run.product_id, product: run.product, factory: match.factory, key: d.key, section: d.section, component: d.component, values: d.cells });
+        PROptions.open({ productId: run.product_id, product: run.product, factory: match.factory || run.factory, key: d.key, section: d.section, component: d.component, values: d.cells });
       } }, [el("b", { text: d.component }), el("span", { text: valueText(d.cells) })]);
     });
     var all = blue.concat(optChips(l));
