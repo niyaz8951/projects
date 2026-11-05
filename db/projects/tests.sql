@@ -1,4 +1,4 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql, db/projects/001_init.sql and 002_visibility.sql. Rolled back.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 004. Rolled back.
 -- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
 -- demo_user with 'edit') and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
@@ -9,7 +9,7 @@ begin
     raise exception 'Register the tile ''projects'' in Admin > Tiles first';
   end if;
 end $$;
-update core.tiles set enabled = true, rights = array['edit'] where id = 'projects';
+update core.tiles set enabled = true, rights = array['edit', 'review'] where id = 'projects';
 insert into core.tile_access (user_id, tile_id, is_admin, rights)
   select p.id, 'projects', true, '{}' from core.profiles p where p.username = 'demo_admin' on conflict do nothing;
 insert into core.tile_access (user_id, tile_id, is_admin, rights)
@@ -52,9 +52,13 @@ begin
   perform pg_temp.expect_error('select public.projects_lists()', 'NOT_APPROVED');
   reset role;
 
+  perform pg_temp.expect_error('select public.projects_products()', 'NOT_APPROVED');
+  reset role;
+
   -- active, no tile
   perform pg_temp.act_as('demo_none');
   perform pg_temp.expect_error('select public.projects_lists()', 'NO_ACCESS');
+  perform pg_temp.expect_error('select public.projects_products()', 'NO_ACCESS');
   perform pg_temp.expect_error('select public.projects_list(null, null, null)', 'NO_ACCESS');
   perform pg_temp.expect_error('select public.projects_create(''Sample Tower'', ''Consultant'', ''Sample Consultants'', ''UAE'')', 'NO_ACCESS');
   reset role;
@@ -63,6 +67,9 @@ begin
   perform pg_temp.act_as('demo_user');
   select public.projects_lists() into v;
   if jsonb_array_length(v -> 'regions') < 5 or jsonb_array_length(v -> 'client_types') < 3 then raise exception 'lists'; end if;
+  select public.projects_products() into v;
+  if jsonb_array_length(v) <> 3 or (v -> 0 ->> 'id') <> 'ahu' or jsonb_array_length(v -> 0 -> 'factories') <> 2
+     or (v -> 0 -> 'factories' -> 0 ->> 'name') <> 'Dubai' then raise exception 'products: %', v; end if;
 
   select public.projects_create('  Sample Tower  ', 'Consultant', ' Sample Consultants ', 'UAE') into v;
   v_id := (v ->> 'id')::uuid; v_code := v ->> 'code';
@@ -97,6 +104,8 @@ begin
 
   -- tile admin without the right in his own row: every declared right of the tile; codes keep counting
   perform pg_temp.act_as('demo_admin');
+  if not core.has_tile((select id from t_ids where k = 'demo_admin'), 'projects', 'review') then raise exception 'admin holds review'; end if;
+  if core.has_tile((select id from t_ids where k = 'demo_user'), 'projects', 'review') then raise exception 'user does not hold review'; end if;
   select public.projects_create('Second Sample', 'Government', 'Sample Ministry', 'Qatar') into v;
   if (v ->> 'code') <= v_code then raise exception 'code not increasing'; end if;
   select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'admin sees both'; end if;

@@ -11,9 +11,11 @@
     var seq = 0;
 
     $('#new').hidden = !canEdit;
-    $('#intro').textContent = seesAll
-      ? 'Every project of the team. Open a project to see its details and history.'
-      : 'Your projects, and the projects shared with you. Open a project to see its details and history.';
+    function intro() {
+      $('#intro').textContent = 'A project holds the specifications and datasheets of one job. '
+        + (seesAll ? 'You see every project of the team.' : 'You see your projects and the projects shared with you.');
+    }
+    intro();
 
     // filters
     PR.lists().then(function (lists) {
@@ -32,13 +34,15 @@
       var host = $('#list'); Core.clear(host);
       var total = rows.length ? rows[0].total : 0;
       $('#download').hidden = !rows.length;
+      // find and filters only once there is something to find in (the screen map: search when there are 2 or more)
+      $('#filters').hidden = !filtered() && total < 2;
       if (!rows.length) {
         $('#count').textContent = '';
         var box = el('div', { class: 'state' },
           el('h2', { text: filtered() ? 'No project matches' : 'No projects yet' }),
-          el('p', { text: filtered() ? 'Nothing in the register fits this search and these filters.'
-                                     : (seesAll ? 'The register is empty. ' : 'You have no projects yet. ')
-                                       + (canEdit ? 'Start the first project.' : 'Projects appear here once a colleague creates one for you.') }),
+          el('p', { text: filtered() ? 'Nothing in the list fits this search and these filters.'
+                                     : 'A project holds the specifications and datasheets of one job. '
+                                       + (canEdit ? 'Start one to read its datasheet and convert its specification.' : 'Projects appear here once a colleague creates or shares one with you.') }),
           filtered() ? el('button', { class: 'btn', type: 'button', text: 'Clear filters', on: { click: function () {
               $('#q').value = ''; $('#f-region').value = ''; $('#f-type').value = ''; load(); } } })
             : canEdit ? el('button', { class: 'btn primary', type: 'button', text: 'New project', on: { click: create } }) : null);
@@ -76,7 +80,7 @@
         if (my !== seq) return; // an older answer arriving late
         rows = r || [];
         if (rows.length && rows[0].sees_all !== undefined) seesAll = !!rows[0].sees_all; // the database's answer wins
-        render();
+        intro(); render();
       }).catch(function (err) { if (my === seq) { $('#count').textContent = ''; PR.errorBox($('#list'), err); } });
     }
     load();

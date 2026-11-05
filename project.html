@@ -22,29 +22,66 @@
   <p><a class="btn small ghost" href="/projects/">&larr; All projects</a></p>
   <div class="page-head">
     <div class="pr-head">
-      <h1 id="name">Project</h1>
+      <div>
+        <h1 id="name">Project</h1>
+        <p class="muted" id="client"></p>
+      </div>
       <span class="badge accent mono" id="code" hidden></span>
     </div>
     <button class="btn" type="button" id="edit" hidden>Edit details</button>
   </div>
 
-  <div class="card">
-    <h2>Details</h2>
-    <div id="details"></div>
-  </div>
+  <div id="loading"></div>
 
-  <div class="card">
-    <div class="pr-card-head">
-      <h2>Shared with</h2>
-      <button class="btn small" type="button" id="share" hidden>Share</button>
-    </div>
-    <div id="members"></div>
-  </div>
+  <div id="body" hidden>
+    <!-- where the project stands, and the one thing to do next -->
+    <section class="card pr-next" aria-labelledby="next-title">
+      <div class="pr-next-text">
+        <p class="section-title" id="next-eyebrow">Next step</p>
+        <h2 id="next-title"></h2>
+        <p class="muted" id="next-sub"></p>
+      </div>
+      <div class="pr-next-actions" id="next-actions"></div>
+    </section>
 
-  <div class="card">
-    <h2>History</h2>
-    <ul class="pr-log" id="log"></ul>
+    <section aria-labelledby="h-tools" class="pr-section">
+      <h2 id="h-tools">Add to this project</h2>
+      <div class="tiles" id="tiles"></div>
+      <p class="hint">Read the datasheet first (optional), then add the specification: its clauses are compared with the units' values. Without a datasheet, the clauses get the closest values the factory offers and the working Excel lists what to select. Blue: the project already holds this. Grey: nothing yet.</p>
+    </section>
+
+    <section class="card" aria-labelledby="h-notes">
+      <h2 id="h-notes">1. Datasheet notes <span class="muted pr-light">(optional, first)</span></h2>
+      <p class="muted">One table per datasheet read. These stay in the project; they are not part of the compliance library.</p>
+      <div id="notes"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-runs">
+      <h2 id="h-runs">2. Compliance records</h2>
+      <p class="muted">One record per converted specification. Answers are kept in the project; new ones go to the reviewers for the library.</p>
+      <div id="runs"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-details">
+      <h2 id="h-details">Details</h2>
+      <div id="details"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-members">
+      <div class="pr-card-head">
+        <h2 id="h-members">Shared with</h2>
+        <button class="btn small" type="button" id="share" hidden>Share</button>
+      </div>
+      <div id="members"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-log">
+      <h2 id="h-log">History</h2>
+      <ul class="pr-log" id="log"></ul>
+    </section>
   </div>
 </main>
+<!-- on a phone the one next step sits at the bottom of the screen, under the thumb -->
+<div class="pr-dock" id="dock" hidden></div>
 </body>
 </html>
