@@ -642,3 +642,17 @@ body.pr-legacy.has-dock .page { padding-bottom: calc(110px + env(safe-area-inset
 .pr-legacy .lib th.w-ic { width: 18%; } .pr-legacy .lib th.w-by { width: 108px; } .pr-legacy .lib th.w-end { width: 104px; }
 .pr-legacy .clean-card { max-width: 760px; }
 .pr-legacy td.nowrap { white-space: nowrap; }
+
+/* ---------- names shared with the core ----------
+   The core's .sheet is its dialog (max 560px wide, its own scroll box) and its .state an empty-state block
+   (centred, large padding). The old pages use both names for other things: the reading table and the small
+   "Saved" note in a row. Undo the core's part here, so the record and the library fill the page. */
+.pr-legacy table.sheet { width: 100%; max-width: none; max-height: none; overflow: visible; padding: 0;
+  border-radius: 0; box-shadow: none; animation: none; background: transparent; }
+.pr-legacy .sheet .state, .pr-legacy .lib .state { text-align: inherit; padding: 0; }
+/* the core lays .page-head out as a row, .stack as a flex column and gives .field a bottom margin and .tabs a
+   border; on the old pages a head is a block, a stack spaces by margins and fields sit in grids */
+.pr-legacy .page-head { display: block; }
+.pr-legacy .stack { display: block; }
+.pr-legacy .field { margin-bottom: 0; }
+.pr-legacy .tabs { border: 0; }
