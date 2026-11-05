@@ -91,7 +91,8 @@
 
     /* ---- 3. The vocabulary (011, pr-vocab.js) ---- */
     vocab_products: [],          // products matched by their verified vocabulary; a row no verified type points at keeps its Spec keywords
-    vocab_fallback: true         // a row the vocabulary covers but finds no clause for in this specification: its Spec keywords are used
+    vocab_fallback: true,        // a row the vocabulary covers but finds no clause for in this specification: its Spec keywords are used
+    vocab_types: 6               // 012: requirement types read per clause (only types that point at a datasheet row count)
   };
 
   var ORDER = Object.keys(DEFAULTS);
@@ -99,7 +100,7 @@
 
   /* ---------- checks (the database makes the same ones: projects.settings_check) ---------- */
   var NUMBERS = { near_words: [0, 30], max_clauses: [1, 10], keep_share: [0, 100], heading_words: [1, 30], label_chars: [10, 200],
-                  figure_words: [1, 40], option_values: [1, 300], candidates_shown: [1, 100], choose_listed: [1, 20] };
+                  figure_words: [1, 40], option_values: [1, 300], candidates_shown: [1, 100], choose_listed: [1, 20], vocab_types: [1, 10] };
   var ID = /^[a-z][a-z0-9_]{0,29}$/, WORD = /^[a-z0-9]+\*?( [a-z0-9]+\*?)*$/;
   function strList(v, max, each) { return Array.isArray(v) && v.length <= max && v.every(function (s) { return typeof s === 'string' && each(s); }); }
   function check(key, v) {

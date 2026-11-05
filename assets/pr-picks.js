@@ -249,11 +249,23 @@
   }
   function sameDimension(clauseDim, rowDim) { return clauseDim === rowDim || (rowDim === 'size' && ['height', 'width', 'length', 'depth'].indexOf(clauseDim) >= 0); }
 
-  function near(clause, at, entries, subject) {
+  /* strict (the chip mark): a whole keyword entry must stand near the figure (or in the heading above), and an entry
+     that is only a dimension word ("thick") does not count - "16 mm thick isocyanate foam" under a drain pan is not
+     the casing panel. Without strict (the picks) any keyword word will do, as in the old tool. */
+  var DIM_WORD = /^(thick|thickness|depth|deep|width|wide|length|long|height|high|size|sizes|dimension|dimensions|gauge|diameter|dia)$/;
+  function near(clause, at, entries, subject, strict) {
     var toks = tokensWithPos(clause), k = -1;
     for (var i = 0; i < toks.length; i++) if (toks[i].at >= at) { k = i; break; }
     if (k < 0) return false;
     var lo = Math.max(0, k - FIG), hi = Math.min(toks.length, k + FIG), keys = [];
+    if (strict) {
+      var pool = toks.slice(lo, hi).map(function (t) { return t.w; }).concat(subject ? tokensWithPos(subject).map(function (t) { return t.w; }) : []);
+      return entries.some(function (e) {
+        var ws = e.filter(function (w) { return w.length >= 3 && !/^\d/.test(w); });
+        if (!ws.length || (ws.length === 1 && DIM_WORD.test(ws[0]))) return false;
+        return ws.every(function (w) { return pool.some(function (t) { return t.indexOf(w) === 0; }); });
+      });
+    }
     entries.forEach(function (e) { e.forEach(function (w) { if (w.length >= 3 && !/^\d/.test(w)) keys.push(w); }); });
     for (var j = lo; j < hi; j++) if (keys.some(function (w) { return toks[j].w.indexOf(w) === 0; })) return true;
     if (subject) { var st = tokensWithPos(subject); for (var q = 0; q < st.length; q++) if (keys.some(function (w) { return st[q].w.indexOf(w) === 0; })) return true; }
@@ -285,7 +297,7 @@
     reqs.forEach(function (r) {
       var mine = [];
       hits.forEach(function (h) {
-        if (!near(clause, r.at, h.entries, subject)) return;
+        if (!near(clause, r.at, h.entries, subject, h.strict)) return;
         if (familyOf(r.m.unit) === 'length') { var want = clauseDimension(clause, r.at, r.m.raw); if (want && !sameDimension(want, rowDimension(h.label))) return; }
         var around = clause.slice(Math.max(0, r.at - 60), r.at + r.m.raw.length + 10);
         if (r.m.unit === '%' && !sameMetric(around, h.label + ' ' + h.cells.join(' '))) return;
@@ -300,7 +312,7 @@
           var shown = converted ? m.raw + ' (' + fmt(v) + ' ' + r.m.unit + ')' : m.raw;
           var asked = r.op === 'range' ? fmt(r.lo) + ' to ' + r.m.raw : r.m.raw;
           var how = r.op === '=' && !equal && prop ? (j === 'better' ? ', better for ' + prop.name : j === 'worse' ? ', worse for ' + prop.name : ', ' + prop.name + ' must match') : '';
-          mine.push({ ok: ok, equal: equal, op: r.op, worse: j === 'worse' || j === 'differs', group: h.group || '', hit: h, m: m,
+          mine.push({ ok: ok, equal: equal, op: r.op, worse: j === 'worse' || j === 'differs', j: j, group: h.group || '', hit: h, m: m,
             text: shown + ' ' + sign + ' ' + asked + (r.op === '=' ? ' asked' : ' required') + how + ' (' + where(h, u.unit, perUnit.length > 1) + ')' });
         });
       });
@@ -315,7 +327,7 @@
           var j = compareClass(c.cls, u.cls, c.prop);
           if (!j) return;
           var ok = j !== 'worse';
-          mine.push({ ok: ok, equal: j === 'equal', op: '>=', worse: !ok, group: h.group || '', hit: h,
+          mine.push({ ok: ok, equal: j === 'equal', op: '>=', worse: !ok, j: j, group: h.group || '', hit: h,
             text: u.cls + ' ' + (j === 'equal' ? '=' : ok ? 'better than' : 'worse than') + ' ' + c.cls + ' required on the ' + c.prop.name + ' scale (' + where(h, u.unit, perUnit.length > 1) + ')' });
         });
       });
@@ -324,13 +336,16 @@
     });
     if (!all.length) return null;
     var broken = all.filter(function (v) { return !v.ok; }), differs = all.filter(function (v) { return v.op === '=' && !v.equal; });
-    if (open && !broken.length) return null;
+    // a clause that also asks things the datasheet does not show is not judged as a whole - but the chip mark
+    // (partial) judges only this row's figures
+    if (open && !broken.length && !hits.some(function (h) { return h.partial; })) return null;
     var compliance = broken.length ? 'Not Comply' : differs.length ? 'Comply with Remarks' : 'Comply';
     var offered = used.map(function (h) { return h.value; }).filter(Boolean).join('; ');
     var remarks = compliance === 'Comply' ? '' : offered;
     var shownT = (broken.length ? broken : differs.length ? differs : all).slice(0, 4).map(function (v) { return v.text; });
     var confidence = !broken.length && differs.some(function (v) { return v.worse; }) ? 'low' : compliance === 'Comply with Remarks' ? 'medium' : 'high';
     return { compliance: compliance, remarks: remarks, rows: used, values: vals, confidence: confidence,
+             checks: all.map(function (v) { return { ok: v.ok, equal: v.equal, worse: v.worse, op: v.op, j: v.j, text: v.text }; }),
              reason: 'From the datasheet: ' + shownT.join('; ') + (all.length > 4 ? ' …' : '') + '.' + (compliance === 'Comply' && offered ? ' Offered: ' + offered + '.' : '') +
                (open ? ' ' + open + ' other part' + (open === 1 ? '' : 's') + ' of the clause not on the datasheet.' : '') +
                (confidence === 'low' ? ' The offer is below what is asked: check before it goes out.' : '') };
@@ -431,6 +446,31 @@
     return override === 'option' || override === 'duty' ? override : auto;
   }
 
+  /* ---------- the mark on a blue chip: what the datasheet value is against what the clause asks ----------
+     owner, 2026-11-05 ("start with 1"): "50 mm asked · 62 mm offered ✓ better". The same comparison as the picks:
+     figures with their operator and unit (converted), classes on their scale, the dimension of a length, the
+     nearness of the row's words. Returns null when the clause asks no figure or class this row can be compared with.
+     o: { clause, key, section, component, cells, columns, keywords, terms, specRows, index }
+     -> { kind: 'meets' | 'better' | 'check' | 'below', mark, reason } */
+  function verdict(o) {
+    var entries = String(o.keywords || '').split(';').map(wordsList).filter(function (e) { return e.length; });
+    (o.terms || []).forEach(function (x) { var e = wordsList(x); if (e.length) entries.push(e); });
+    if (!entries.length) return null;
+    var comp = String(o.component || '').replace(/\s\u00b7.*$/, '');
+    var hit = { key: o.key, section: o.section, component: comp, label: o.section + ' \u2022 ' + comp, cells: o.cells || [], entries: entries,
+                value: (o.cells || []).filter(function (x) { return x && x !== '-'; }).join('; '), strict: true, partial: true };
+    var subject = o.specRows && o.index != null ? subjectOf(parentOf(o.specRows, o.index)) : '';
+    var c = compareDatasheet(o.clause, [hit], o.columns && o.columns.length ? o.columns : ['unit'], subject);
+    if (!c || !c.checks || !c.checks.length) return null;
+    // below: outside a minimum / maximum / range, or on the worse side of a property with a direction (75 mm asked,
+    // 62 mm offered); check: must match and differs (a voltage), or no property says which way is better
+    var k = c.checks, kind = k.some(function (x) { return !x.ok || x.j === 'worse'; }) ? 'below'
+      : k.some(function (x) { return x.j === 'differs' || x.j === 'unknown'; }) ? 'check'
+      : k.some(function (x) { return !x.equal; }) ? 'better' : 'meets';
+    var MARK = { meets: '\u2713 meets', better: '\u2713 better', check: '\u2260 check', below: '\u2717 not met' };
+    return { kind: kind, mark: MARK[kind], reason: c.reason };
+  }
+
   /* ---------- the record's picks: per clause, the rows it is about that have no datasheet value ---------- */
   function norm(s) { return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
   function wordsList(s) { var n = norm(s); return n ? n.split(' ') : []; }
@@ -498,6 +538,6 @@
     if (v.choose_listed != null) LISTED = v.choose_listed;
   }
 
-  window.PRPicks = { build: build, configure: configure, propertyOf: propertyOf, classRequirements: classRequirements, classTokens: classTokens, familyOf: familyOf, measurements: measurements, requirements: requirements, compareDatasheet: compareDatasheet, optionPicks: optionPicks,
+  window.PRPicks = { build: build, configure: configure, verdict: verdict, propertyOf: propertyOf, classRequirements: classRequirements, classTokens: classTokens, familyOf: familyOf, measurements: measurements, requirements: requirements, compareDatasheet: compareDatasheet, optionPicks: optionPicks,
                      poKind: poKind, poAutoKind: poAutoKind, parentOf: parentOf, subjectOf: subjectOf, fmt: fmt, convert: convert };
 })();

@@ -33,7 +33,9 @@
      newest one only (a datasheet read twice does not give its units twice). Returns { columns, entries(row) }:
      entries(row) = every table row the mapping row stands for, in order, each { qual, cells } - a key printed
      twice (Filter Class of Filter 1 and of Filter 2, the second "Empty Section Supply") gives two entries, told
-     apart by their order in the table and named by their sub-heading or section. Old saved tables work as they are. */
+     apart by their order in the table and named by their section as printed ("8) Filter Supply") when the row is in
+     several sections, plus their sub-heading ("Filter 1") when it repeats inside one section (owner, 2026-11-05: the
+     F9 and H13 chips had no name). Old saved tables ("Filter Supply (2)") work as they are. */
   function unitLookup(notes, columns) {
     var keep = notes.map(function () { return []; }), seen = {};
     for (var t = notes.length - 1; t >= 0; t--) notes[t].columns.forEach(function (tag, i) { keep[t][i] = !seen[tag]; seen[tag] = 1; });
@@ -44,12 +46,12 @@
       note.rows.forEach(function (r) {
         if (r.section) { s = r.section; title = r.section; sub = ''; }
         if (r.kind === 'sub') { sub = r.component || ''; return; }
-        var m = /\((\d+)\)\s*$/.exec(title), qual = [m ? sec(title) + ' ' + m[1] : '', sub].filter(Boolean).join(' \u00b7 ');
+        var m = /\((\d+)\)\s*$/.exec(title), qual = [m ? sec(title) + ' ' + m[1] : '', sub].filter(Boolean).join(' \u00b7 '), part = t + '|' + title;
         [r.key ? 'k:' + r.key : null, 'n:' + sec(s) + '|' + low(r.component)].forEach(function (k) {
           if (!k) return;
           occ[k] = (occ[k] || 0) + 1;
           var id = k + '#' + occ[k], e = byId[id];
-          if (!e) { e = byId[id] = { qual: qual, cells: columns.map(function () { return ''; }) }; (order[k] = order[k] || []).push(e); }
+          if (!e) { e = byId[id] = { qual: qual, title: title, part: part, sub: sub, cells: columns.map(function () { return ''; }) }; (order[k] = order[k] || []).push(e); }
           (r.cells || []).forEach(function (v, i) { var c = at[t][i]; if (c >= 0 && c != null) e.cells[c] = v == null ? '' : String(v); });
         });
       });
@@ -58,7 +60,13 @@
     Object.keys(byId).forEach(function (id) { var e = byId[id]; while (e.cells.length < columns.length) e.cells.push(''); });
     return function (row) {
       var list = (row.key && order['k:' + row.key]) || order['n:' + sec(row.section) + '|' + low(row.component)] || [];
-      return list.map(function (e) { return { qual: list.length > 1 ? e.qual : '', cells: e.cells.slice() }; });
+      if (list.length < 2) return list.map(function (e) { return { qual: '', cells: e.cells.slice() }; });
+      var parts = {}; list.forEach(function (e) { parts[e.part] = (parts[e.part] || 0) + 1; });
+      var several = Object.keys(parts).length > 1;
+      return list.map(function (e) {
+        var q = [several ? e.title.trim() : '', parts[e.part] > 1 ? e.sub : ''].filter(Boolean).join(' \u00b7 ');
+        return { qual: q || e.qual, cells: e.cells.slice() };
+      });
     };
   }
 
@@ -108,7 +116,10 @@
             var one = { component: base.component + (e.qual ? ' \u00b7 ' + e.qual : ''), cells: e.cells };
             // the vocabulary's "#2": a clause that asks for the second row of the key (Filter 2) belongs to that entry only
             if (r.nth) {
-              var extra = none ? Object.keys(r.nth).reduce(function (all, k) { return all.concat(r.nth[k]); }, []) : (r.nth[n + 1] || []);
+              // the highest "#n" a type names also takes the later rows of the key: "#2" (final filter) is the second and
+              // every later filter stage, so a unit with F7 + F7 + F9 + H13 shows all three after the pre-filter
+              var top = Math.max.apply(null, Object.keys(r.nth).map(Number));
+              var extra = none ? Object.keys(r.nth).reduce(function (all, k) { return all.concat(r.nth[k]); }, []) : (r.nth[n + 1] || (n + 1 > top ? r.nth[top] : []));
               one.lines = base.lines.concat(extra.filter(function (x, i, a) { return base.lines.indexOf(x) < 0 && a.indexOf(x) === i; })).sort(function (x, y) { return x - y; });
               one.found = one.lines.length > 0;
             }

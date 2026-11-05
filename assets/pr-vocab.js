@@ -101,7 +101,8 @@
     return out;
   }
 
-  function identify(v, clause, section, max) {
+  /* keep (optional): only types it accepts take one of the max places (match: types that point at a datasheet row) */
+  function identify(v, clause, section, max, keep) {
     max = max || 3;
     if (!v || !v.types.length || !clause) return [];
     var w = idf(v), h = norm(clause), hs = norm(section || '');
@@ -184,6 +185,7 @@
     for (var i = 0; i < out.length; i++) {
       var x = out[i];
       if (kept.length >= max) break;
+      if (keep && !keep(x.type, x)) continue;
       if (kept.some(function (k) { return k.type.component === x.type.component && k.landmarks.join() === x.landmarks.join(); })) continue;
       if (kept.length && x.score < kept[0].score * 0.6) break;
       kept.push(x);
@@ -205,7 +207,13 @@
     cl.forEach(function (c, i) {
       var allowed = hasFirst ? parts.indexOf(c.part) >= 0 : true;
       if (!allowed) return;
-      identify(v, c.text, (c.heading + ' ' + c.sec).trim(), 3).forEach(function (x) {
+      // a long clause asks several things ("50 mm thick ... galvanized ... hinged doors"): up to vocab_types types,
+      // counting only the types that point at a datasheet row (owner, 2026-11-05: the panel thickness was lost)
+      // a value type with a unit (panel thickness in mm, air flow in l/s) belongs to a clause only when the clause states a
+      // figure in that unit: "provided in the panel" or "airflow switch" is not a panel thickness or an air flow
+      identify(v, c.text, (c.heading + ' ' + c.sec).trim(), values.vocab_types || 6, function (t, x) {
+        return t.rows.length > 0 && !(t.kind === 'value' && t.unit && !x.level.measure);
+      }).forEach(function (x) {
         x.type.rows.forEach(function (r) {
           var ref = rowRef(r);
           (hits[ref.key] = hits[ref.key] || []).push({ i: i, s: x.score, part: hasFirst ? c.part : parts[0], n: ref.n, c: c, t: x.type.title, w: x.type.terms.concat(x.type.anchors) });

@@ -72,7 +72,7 @@
                    draft: l.ai_draft ? { reason: (l.ai && l.ai.reason) || "", confidence: (l.ai && l.ai.confidence) || "" } : null,
                    comments: run.can_comment ? l.lib_comments || "" : undefined,
                    review: l.tl_review || "", canReview: !!run.can_review,       // a box for the people who may write them, a line of text for everyone else
-                   others: (l.lib_comments && !run.can_comment ? ["Internal comment · " + l.lib_comments] : []).concat((sheetOf[lines.indexOf(l)] || []).map(function (d) { return "Datasheet · " + d.component + ": " + valueText(d.cells); })) });
+                   others: (l.lib_comments && !run.can_comment ? ["Internal comment · " + l.lib_comments] : []).concat((sheetOf[lines.indexOf(l)] || []).map(function (d) { var v = chipVerdict(d, l); return "Datasheet · " + d.component + ": " + valueText(d.cells) + (v ? " · " + v.mark : ""); })) });
     });
     // Opens where the user is: the clause at the top of the window once he has scrolled into the
     // specification, otherwise the first clause still to fill.
@@ -499,11 +499,27 @@
   }
   /* The three helps under a clause: blue chips (the datasheet value of each row the clause asks about), dashed chips
      (what to select, for the rows without a datasheet value); the library's answer is the green pre-filled answer. */
+  /* The datasheet value against what the clause asks (PRPicks.verdict): ✓ meets, ✓ better, ≠ check, ✗ below; nothing
+     when the clause asks no figure or class this row can be compared with. Worked out once per clause and row. */
+  var verdicts = {};
+  function chipVerdict(d, l) {
+    var i = lines.indexOf(l), id = i + "|" + d.key + "|" + d.component;
+    if (id in verdicts) return verdicts[id];
+    var rule = (match.rules || []).filter(function (r) { return r.key === d.key; })[0];
+    var specRows = specRowsOf || (specRowsOf = lines.map(function (x) { return { seq: x.seq, type: x.type, sr: x.sr, spec: x.spec }; }));
+    try {
+      return verdicts[id] = PRPicks.verdict({ clause: l.spec, key: d.key, section: d.section, component: d.component, cells: d.cells, columns: match.columns,
+        keywords: rule ? rule.keywords : "", terms: d.terms, specRows: specRows, index: i });
+    } catch (e) { return verdicts[id] = null; }
+  }
+  var specRowsOf = null;
   function sheetChips(sheet, l) {
     var blue = sheet.map(function (d) {
-      return el("button", { type: "button", "class": "rc-chip", title: "From the datasheet. Press to see what the factory offers for this row.", onclick: function () {
+      var v = chipVerdict(d, l);
+      return el("button", { type: "button", "class": "rc-chip" + (v ? " v-" + v.kind : ""),
+        title: (v ? v.reason + " " : "") + "From the datasheet. Press to see what the factory offers for this row.", onclick: function () {
         PROptions.open({ productId: run.product_id, product: run.product, factory: match.factory || run.factory, key: d.key, section: d.section, component: d.component, values: d.cells });
-      } }, [el("b", { text: d.component }), el("span", { text: valueText(d.cells) })]);
+      } }, [el("b", { text: d.component }), el("span", { text: valueText(d.cells) }), v ? el("i", { "class": "rc-mark", text: v.mark }) : null]);
     });
     var all = blue.concat(optChips(l));
     return all.length ? el("div", { "class": "rc-sheet" }, all) : null;
@@ -530,14 +546,14 @@
   }
   function loadMatch() {
     PRMatch.load({ projectId: run.project_id, productId: run.product_id, specRows: lines.map(function (l) { return { type: l.type, sr: l.sr, spec: l.spec }; }) }).then(function (m) {
-      match = m; sheetOf = {};
+      match = m; sheetOf = {}; verdicts = {}; specRowsOf = null;
       loadSelection(m);
       // a row the datasheet has a value for is a blue chip; a row without one gets the dashed Product Options chip instead (per row, owner)
       m.table.forEach(function (r) { if (r.kind === "row" && r.found && m.hasNotes && PRMatch.hasValue(r)) r.lines.forEach(function (i) { (sheetOf[i] = sheetOf[i] || []).push(r); }); });
       var n = Object.keys(sheetOf).length, note = $("rc-sheet-note");
       note.hidden = false;
       note.textContent = !m.hasNotes ? "No " + run.product + " datasheet in this project yet. Read one and its values appear beside the clauses that ask about them; the Excel gets them on its second sheet."
-        : n ? n + (n === 1 ? " clause has" : " clauses have") + " the datasheet value beside " + (n === 1 ? "it" : "them") + " (blue chips). Found by the row keywords, not by meaning: read before you rely on it."
+        : n ? n + (n === 1 ? " clause has" : " clauses have") + " the datasheet value beside " + (n === 1 ? "it" : "them") + " (blue chips). Found by " + (m.byVocab ? "the vocabulary and the row keywords" : "the row keywords") + ", not by meaning: read before you rely on it. \u2713 / \u2260 / \u2717 on a chip compare its figure with the clause."
         : "The datasheet is in the project, but no clause matched a row keyword. An editor adds keywords in Product Options > Row mapping.";
       // the datasheet names its factory (Material Name): a specification converted for another factory gets the wrong library and options
       var other = m.hasNotes && m.factory && run.factory && m.factory.toLowerCase() !== String(run.factory).toLowerCase();

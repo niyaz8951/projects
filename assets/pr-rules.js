@@ -30,7 +30,8 @@
     candidates_shown: 'Values on the Selection list per row',
     choose_listed: 'Values named in a "choose:" chip',
     vocab_products: 'Match this product by its vocabulary',
-    vocab_fallback: 'Keywords where the vocabulary finds nothing'
+    vocab_fallback: 'Keywords where the vocabulary finds nothing',
+    vocab_types: 'Requirement types per clause, at most'
   };
   var HELP = {
     topics: 'The topic gate. A clause about one part of the unit (its label or the heading above it names filters, fans, a VFD ...) only takes datasheet rows of that part. A clause or a row with no topic is not gated. Order matters: a text takes the first topic it names, so put the specific ones (VFD, heat pipe) above the wide ones (fan, coil). Words are whole words; "*" at the end of a word means any ending (humidif* finds humidifier and humidification); write a plural as its own word.',
@@ -49,9 +50,10 @@
     candidates_shown: 'On the Selection list sheet of the working Excel.',
     choose_listed: 'In "choose: ..." and "none of the values seen meets ...", the rest as "and n more".',
     vocab_products: 'Off: every datasheet row is found by its Spec keywords, as before. On: a row that a verified type of the vocabulary points at (Row:) is found by the vocabulary - what the clause asks, by its landmarks; a "#2" row (Filter 2) gets only the clauses about it. Rows no verified type points at keep their Spec keywords. Only verified items are read.',
-    vocab_fallback: 'For a row the vocabulary covers but finds no clause for in this specification: on, its Spec keywords are used instead (you never see fewer rows than with keywords); off, the row stays empty (no keyword guesses for rows the vocabulary covers).'
+    vocab_fallback: 'For a row the vocabulary covers but finds no clause for in this specification: on, its Spec keywords are used instead (you never see fewer rows than with keywords); off, the row stays empty (no keyword guesses for rows the vocabulary covers).',
+    vocab_types: 'A long clause asks several things ("50 mm thick, galvanized, steel frame, hinged doors"). The record reads up to this many requirement types in one clause, best first, counting only types that point at a datasheet row; types scoring below 60% of the best are dropped. Try a clause lists every type it recognises.'
   };
-  var UNITS = { near_words: 'words', max_clauses: 'clauses', keep_share: '% of the best', heading_words: 'words', label_chars: 'characters', figure_words: 'words',
+  var UNITS = { vocab_types: 'types', near_words: 'words', max_clauses: 'clauses', keep_share: '% of the best', heading_words: 'words', label_chars: 'characters', figure_words: 'words',
                 option_values: 'values', candidates_shown: 'values', choose_listed: 'values' };
   var TABS = {
     find: ['topics', 'general_topics', 'section_topics', 'parts', 'near_words', 'max_clauses', 'keep_share', 'heading_words', 'heading_verbs', 'label_chars'],
@@ -95,7 +97,9 @@
       'Generic words (rating, capacity, diameter, length, depth, width, lock, stainless steel) count only beside the type\'s component.',
       'A component alone is not a requirement: a type needs a property term or an anchor. A type is recognised at a score of 3.5 or more; at most 3 types per clause, those scoring below 60% of the best are dropped, and two types of one component found by the same words count once.',
       'An Equivalent ("MERV 14 = F8") reads the class from another scale; a range on its left side ("MERV 7-8") is for people only. A class asked is a minimum.',
-      'The heading above the clause and the section title count as its heading. The Parts searched, the clauses per row and the weaker-clause share of "Finding the row" apply to the vocabulary too; the topic gate does not (the components do that job).'
+      'The heading above the clause and the section title count as its heading. The Parts searched, the clauses per row and the weaker-clause share of "Finding the row" apply to the vocabulary too; the topic gate does not (the components do that job).',
+      'On the record, a clause takes up to "Requirement types per clause" types (Vocabulary tab), counting only types that point at a datasheet row; Try a clause lists up to 10, with or without a row.',
+      'On the record, a value type with a unit (Panel thickness in mm, Supply air flow in m3/h) counts for a clause only when the clause states a figure in that unit, so "provided in the panel" or "airflow switch" does not bring the panel or the air flow row.'
     ]]
   ];
 
@@ -357,6 +361,7 @@
         el('label', { class: 'field mr-vb-product' }, el('span', { text: 'Product' }), pick),
         card('vocab_products', el('label', { class: 'check' }, sw, el('span', { id: 'vb-on-text' }))),
         card('vocab_fallback', el('label', { class: 'check' }, fb, ' Use the Spec keywords for those rows')),
+        card('vocab_types', numberEditor('vocab_types')),
         V.info, V.tools, V.problems),
       V.list
     ];
@@ -582,7 +587,7 @@
     var box = el('div', { class: 'mr-try-vocab' }, el('h3', { text: 'By the vocabulary' }), el('p', { class: 'muted', text: 'Reading the vocabulary…' }));
     tryOut.appendChild(box);
     vocabItems(productId).then(function (items) {
-      var v = window.PRVocab.build(items, true), found = window.PRVocab.identify(v, text, head, 3);
+      var v = window.PRVocab.build(items, true), found = window.PRVocab.identify(v, text, head, 10);
       var names = {}; rules.forEach(function (r) { names[r.key] = (String(r.label || '').trim() || r.component) + ' (' + r.section + (r.sub ? ' / ' + r.sub : '') + ')'; });
       var on = state.draft.vocab_products.indexOf(productId) >= 0;
       box.removeChild(box.lastChild);

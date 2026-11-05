@@ -44,6 +44,10 @@
     {
       "name": "011_vocabulary",
       "path": "db/projects/011_vocabulary.sql"
+    },
+    {
+      "name": "012_vocab_types",
+      "path": "db/projects/012_vocab_types.sql"
     }
   ]
 }

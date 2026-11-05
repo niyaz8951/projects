@@ -379,6 +379,11 @@ body.pr-legacy.has-dock .page { padding-bottom: calc(110px + env(safe-area-inset
 .pr-legacy .rc-chip b { font-weight: 650; color: var(--brand); }
 .pr-legacy .rc-chip span { overflow-wrap: anywhere; }
 .pr-legacy .rc-chip:hover { border-color: var(--brand); }
+.pr-legacy .rc-chip .rc-mark { font-style: normal; font-weight: 650; font-size: 12px; white-space: nowrap; }      /* the datasheet value against the clause */
+.pr-legacy .rc-chip.v-meets .rc-mark, .pr-legacy .rc-chip.v-better .rc-mark { color: var(--ok); }
+.pr-legacy .rc-chip.v-check .rc-mark { color: var(--warn); }
+.pr-legacy .rc-chip.v-below { border-color: color-mix(in srgb, var(--danger) 55%, transparent); }
+.pr-legacy .rc-chip.v-below .rc-mark { color: var(--danger); }
 .pr-legacy .rc-chip.opt { background: transparent; border-style: dashed; }
 .pr-legacy /* no datasheet: what to select, .pr-legacy from Product Options */
   .rc-chip.opt.miss b { color: var(--warn); }
