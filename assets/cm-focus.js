@@ -241,7 +241,7 @@
       if (window.Hub.autoGrow) [rem, note, tl].forEach(function (b) { if (b) window.Hub.autoGrow(b); });
       state = el('div', { 'class': 'cf-state', role: 'status', 'aria-live': 'polite', text: it.info || '' });
       chipBox = el('div', { 'class': 'cf-chips' }, (o.choices || []).map(function (c) {
-        return el('button', { type: 'button', 'class': 'cf-chip', text: c, 'aria-pressed': 'false', onclick: function () {
+        return el('button', { type: 'button', 'class': 'cf-chip', text: c, 'aria-pressed': 'false', 'data-accent': (window.Hub && window.Hub.answerHue && window.Hub.answerHue(c)) || null, onclick: function () {
           comp.value = comp.value.trim().toLowerCase() === c.toLowerCase() ? '' : c;      // a second tap takes the answer off
           try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) { /* no haptics */ }
           if (odd && odd.parentNode) odd.remove();

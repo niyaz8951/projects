@@ -169,6 +169,16 @@
      click and phones get their own picker. The answers are the setting answer_choices (Matching rules > Answers); an
      answer saved before that is not in the list shows as "... (not in the list)" until one of the list is picked.
      .value is '' for no answer. ---------- */
+  /* Each answer its own colour (owner, 2026-11-06: "Comply as green is like go"): the core's accent hues, day and night.
+     An answer an admin adds takes the tile's colour. */
+  var HUES = { 'comply': 'green', 'comply with remarks': 'teal', 'noted': 'blue', 'not comply': 'rose', 'not applicable': 'slate', "in contractor's scope": 'violet' };
+  function answerHue(a) { return HUES[String(a || '').trim().toLowerCase()] || ''; }
+  /* the answer as a coloured pill to read (Read view); text stays searchable */
+  function answerBadge(a) {
+    a = String(a || '').trim();
+    if (!a) return null;
+    return el('span', { 'class': 'answer-pill set static', 'data-accent': answerHue(a) || null, title: a }, [el('span', { 'class': 'answer-text', text: a })]);
+  }
   /* The native list sits, invisible, over a pill that shows the whole answer and wraps in a narrow column (owner: "Comply
      with" was cut off). The list keeps the click, the keyboard and the phone's own picker. Put pick.box in the page. */
   function answerPick(value, choices, label) {
@@ -190,6 +200,9 @@
       s.classList.toggle('set', set); s.classList.toggle('odd', odd);
       box.classList.toggle('set', set); box.classList.toggle('odd', odd);
       shown.textContent = set ? (odd ? s.value + ' (not in the list)' : s.value) : 'Choose\u2026';
+      box.title = shown.textContent;
+      var hue = set && !odd ? answerHue(s.value) : '';
+      if (hue) box.setAttribute('data-accent', hue); else box.removeAttribute('data-accent');
     }
     s.addEventListener('change', paint);
     s.setChoices = function (list) { fill(list, s.value); };        // the admin's list, read after the pill was drawn
@@ -217,7 +230,7 @@
     date: function (iso, time) { return time ? Core.dateTime(iso) : Core.date(iso); },
     param: Core.param, go: Core.go, setBack: setBack,
     skeleton: skeleton, emptyState: emptyState, more: more, dock: dock, dragClose: dragClose,
-    autoHide: autoHide, autoGrow: autoGrow, lazyRows: lazyRows, answerPick: answerPick, answerChoices: answerChoices,
+    autoHide: autoHide, autoGrow: autoGrow, lazyRows: lazyRows, answerPick: answerPick, answerChoices: answerChoices, answerHue: answerHue, answerBadge: answerBadge,
     token: function () { return ''; },                                   // the core sends the session itself
     requireLogin: function (o) { return Core.requireLogin({ tile: PR.TILE, right: o && o.right }); },
     canEdit: function () { return PR.canEdit(Core.user); },

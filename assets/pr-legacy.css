@@ -531,7 +531,11 @@ body.pr-legacy.has-dock .page { padding-bottom: calc(110px + env(safe-area-inset
 .pr-legacy .cf-chip { font: inherit; font-size: calc(15px * var(--cf-k, 1)); font-weight: 600; min-height: calc(44px * var(--cf-k, 1)); padding: 0 calc(16px * var(--cf-k, 1)); border-radius: 999px; cursor: pointer; background: var(--surface); color: var(--text); border: 1.5px solid var(--border); transition: transform .1s, background .15s, border-color .15s; }
 .pr-legacy .cf-chip:hover { border-color: var(--brand); }
 .pr-legacy .cf-chip:active { transform: scale(.96); }
-.pr-legacy .cf-chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.pr-legacy .cf-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+/* each answer its own colour (Hub.answerHue): the outline in its hue, filled when chosen - as the pill in the tables */
+.pr-legacy .cf-chip[data-accent] { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.pr-legacy .cf-chip[data-accent]:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.pr-legacy .cf-chip[data-accent][aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .pr-legacy .cf-body .input { font-size: calc(16px * var(--cf-k, 1)); min-height: calc(44px * var(--cf-k, 1)); padding: calc(9px * var(--cf-k, 1)) calc(12px * var(--cf-k, 1)); border-radius: calc(12px * var(--cf-k, 1)); }
 .pr-legacy .cf textarea.input { min-height: calc(62px * var(--cf-k, 1)); resize: vertical; }
 .pr-legacy .cf.lib .cf-answer .input { background: var(--ok-bg); }
@@ -666,17 +670,23 @@ body.pr-legacy.has-dock .page { padding-bottom: calc(110px + env(safe-area-inset
 .pr-legacy .field { margin-bottom: 0; }
 .pr-legacy .tabs { border: 0; }
 
-/* the Compliance pill (Hub.answerPick, 014): picked from the list, never typed. The native list lies invisible over the pill,
-   which shows the whole answer and wraps in a narrow column. */
-.pr-legacy .answer-pill { position: relative; display: flex; align-items: center; gap: 6px; width: 100%; min-height: 40px; padding: 7px 12px 7px 14px; border-radius: 22px;
-  font-size: 14px; font-weight: 600; line-height: 1.25; color: var(--text-soft); background: var(--surface); border: 1.5px dashed var(--border); box-sizing: border-box; }
-.pr-legacy .answer-pill .answer-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.pr-legacy .answer-pill .answer-caret { flex: none; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid currentColor; opacity: .7; }
+/* the Compliance pill (Hub.answerPick, 014): picked from the list, never typed. The native list lies invisible over the pill.
+   One line (owner, 2026-11-06: wrapping looked ugly): the Compliance columns are wide enough for "In Contractor's Scope";
+   anything longer ends in "..." with the whole answer as the tooltip. Filled in the answer's own colour, as in Focus mode. */
+.pr-legacy .answer-pill { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; max-width: 100%; min-height: 38px; padding: 0 12px 0 14px; border-radius: 999px;
+  font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--text-soft); background: var(--surface); border: 1.5px dashed var(--border); box-sizing: border-box; }
+.pr-legacy .answer-pill .answer-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pr-legacy .answer-pill .answer-caret { flex: none; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid currentColor; opacity: .75; }
 .pr-legacy .answer-pill select.answer-pick { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; margin: 0; border: 0; }
-.pr-legacy .answer-pill:hover { border-color: var(--brand); }
-.pr-legacy .answer-pill:focus-within { box-shadow: var(--focus); border-color: var(--brand); }
-.pr-legacy .answer-pill.set { color: var(--text); border-style: solid; border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); background: color-mix(in srgb, var(--brand) 10%, var(--surface)); }
-.pr-legacy .answer-pill.odd { border-color: var(--warn); background: var(--warn-bg); }
+.pr-legacy .answer-pill:hover { border-color: var(--accent); }
+.pr-legacy .answer-pill:focus-within { box-shadow: var(--accent-ring); border-color: var(--accent); }
+.pr-legacy .answer-pill.set { color: var(--on-accent); border-style: solid; border-color: var(--accent); background: var(--accent); }
+.pr-legacy .answer-pill.set:hover { filter: brightness(1.06); }
+.pr-legacy .answer-pill.odd { color: var(--text); border-color: var(--warn); background: var(--warn-bg); }
+.pr-legacy .answer-pill.static { display: inline-flex; width: auto; min-height: 30px; padding: 0 12px; font-size: 13px; }
 .pr-legacy .answer-pill select.answer-pick option { color: var(--text); background: var(--surface); }
+/* the Compliance columns fit the longest standard answer on one line */
+.pr-legacy .rc th:nth-child(3) { width: 228px; }
+.pr-legacy .lib th.w-c { width: 228px; }
 .pr-legacy .rc-chip.hint b { white-space: nowrap; }
 .pr-legacy .cf-odd { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--warn-bg); color: var(--text); font-size: 14px; }

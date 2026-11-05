@@ -148,7 +148,7 @@
     if (!editing || (!boxes && lazy.on)) {
       var plain = el("tr", { "class": "line" + rowClass }, [
         el("td", { "class": "sr " + kind, text: l.sr }), el("td", {}, [text, reason, chips]),
-        el("td", { "class": "read", "data-label": "Compliance", text: s.c }), el("td", { "class": "read", "data-label": "Remarks", text: s.r }),
+        el("td", { "class": "read", "data-label": "Compliance" }, [Hub.answerBadge(s.c)]), el("td", { "class": "read", "data-label": "Remarks", text: s.r }),
         el("td", { "class": "tl", "data-label": "TL Review", text: l.tl_review || "" }),
         el("td", { "class": "note", "data-label": "Internal Comments", text: l.lib_comments || "" }),
         el("td", { "class": "end" }, stateText(l) ? [state] : [])

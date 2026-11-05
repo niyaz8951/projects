@@ -126,7 +126,7 @@
     // read: plain text, so the page can be searched (Ctrl+F) and read like the document
     if (!editing || (!boxes && lazy.on)) {
       var plain = el("tr", { "class": "line" }, first.concat([
-        el("td", { "class": "read", "data-label": "Compliance", text: l.compliance || "" }), el("td", { "class": "read", "data-label": "Remarks", text: l.remarks || "" }),
+        el("td", { "class": "read", "data-label": "Compliance" }, [Hub.answerBadge(l.compliance)]), el("td", { "class": "read", "data-label": "Remarks", text: l.remarks || "" }),
         el("td", { "class": "note", "data-label": "Internal Comments", text: l.comments || "" }),
         el("td", { "class": "who", "data-label": "Filled by", text: who.join(", ") }),
         el("td", { "class": "end" })
