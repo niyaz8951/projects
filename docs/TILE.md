@@ -5,7 +5,7 @@ Tile id `projects` - repo `projects` - address `/projects/` - schema `projects` 
 ## What it does
 The team's Projects tool, moved from Thinkneering feature for feature. A project holds the datasheets and specifications of one job: the datasheet PDF is read in the browser into a table of values per unit; the specification PDF is turned into clauses; under each clause the record shows what helps answer it (the project's datasheet values, else the factory's approved Product Options, and the library's approved answer); people answer the clauses, answers reach the factory's compliance library through review, and the compliance Excel files are downloaded. No AI anywhere.
 
-Today (steps 1 and 1b) the register and the project page are built. A user sees and works in **his own projects**; a **tile admin and the super user** see and work in every project. Everything a page shows is data from Supabase.
+Today (steps 1, 1b and 1c) the register and the project page are built. A user sees and works in **his own projects and the projects shared with him**; a **tile admin and the super user** see and work in every project and share projects with other users of the tile. Everything a page shows is data from Supabase.
 
 ## Rights
 - `edit` - create projects and change their details; read datasheets, convert specifications, answer clauses, download the Excel files (steps 2-3) - in projects the user may open.
@@ -14,17 +14,18 @@ Today (steps 1 and 1b) the register and the project page are built. A user sees 
 A user with the tile and no right reads his projects only. The owner enters the same list in Admin > Tiles.
 
 ## Who sees what
-- A plain user: the projects he created (list, open, edit with `edit`). Another user's project answers `NOT_FOUND`, never `NO_RIGHT`, so nothing tells him whether an id exists.
-- A tile admin (Admin > Tiles > access, "admin") and the super user: every project of every user; the list shows a "Created by" column and the intro line says so.
+- A plain user: the projects he created and the projects shared with him (list, open, edit with `edit`); he cannot share a project on. Another user's project answers `NOT_FOUND`, never `NO_RIGHT`, so nothing tells him whether an id exists.
+- A tile admin (Admin > Tiles > access, "admin") and the super user: every project of every user; the list shows a "Created by" column and the intro line says so. Only they share a project (the whole list of people, as in the old tool); the people offered are the active users of the tile, other than the creator.
 - The database decides (`projects.can_open`); the page only hides columns and buttons.
 - Later steps inherit this: a datasheet table, a specification record or a download is reached only through a project the caller may open. Compliance review and Product Options are reached with the right `review` (tile admins and the super user).
 
 ## Pages
 - `index.html` - the register: find (name, client or code), filters by region and client type, the list (last changed first, 300 at most), "New project" (right `edit`), "Download list (CSV)" built in the browser from the rows shown.
-- `project.html?id=<uuid>` - one project: code, details, "Edit details" (right `edit`), history.
+- `project.html?id=<uuid>` - one project: code, details, "Edit details" (right `edit`), "Shared with" with the Share sheet (tile admins and the super user: find a person, tick, Save), history.
 
 ## Data
 - `projects.projects` - `id`, `code` (`P-<year>-<number>`, unique, never reused, never changes), `name`, `client_type`, `client_name`, `region`, `created_by` + `created_by_name`, `created_at`, `updated_by` + `updated_by_name`, `updated_at`. RLS on, no policies.
+- `projects.members` - who a project is shared with: `project_id`, `user_id`, `added_by` + `added_by_name`, `added_at`. The creator is never a member. RLS on, no policies.
 - `projects.events` - what happened in a project (`created`, `details changed` with the changed fields), shown as History. RLS on, no policies.
 - `projects.lists` - the pick lists `client_type` and `region` (generic values: kinds of client, countries). RLS on, no policies.
 - `projects.counters` - one counter per name, only goes up (`project` for the codes). RLS on, no policies.
@@ -32,11 +33,13 @@ A user with the tile and no right reads his projects only. The owner enters the 
 
 ## Functions
 - `projects_lists()` - the pick lists. Anyone with the tile.
-- `projects_list(p_q, p_region, p_client_type)` - the register with `total` and `sees_all`; own projects, or all for an admin; `p_q` matches name, client name or code. Anyone with the tile.
+- `projects_list(p_q, p_region, p_client_type)` - the register with `members` (count), `total` and `sees_all`; own and shared projects, or all for an admin; `p_q` matches name, client name or code. Anyone with the tile.
 - `projects_create(p_name, p_client_type, p_client_name, p_region)` - right `edit`; returns `{ id, code }`. `INVALID:name`, `INVALID:client_type`, `INVALID:client_name`, `INVALID:region`.
-- `projects_get(p_id)` - one project with its last 100 events, if the caller may open it; `NOT_FOUND` otherwise.
+- `projects_get(p_id)` - one project with its members (names through `core.display_names`), `can_share` and its last 100 events, if the caller may open it; `NOT_FOUND` otherwise.
 - `projects_update(p_id, p_name, p_client_type, p_client_name, p_region)` - right `edit`, own project or admin (`NOT_FOUND` otherwise); writes one history line listing the changed fields; no change, no line.
-- `projects.can_open(profile, created_by)` - internal helper: creator, tile admin or super user.
+- `projects_share_get(p_id)` - tile admin or super user (`NO_RIGHT` otherwise; `NOT_FOUND` when the caller cannot open it): the members and the people the project can be shared with (`core.tile_users('projects')`; until the core has it, `users` is empty and `core_missing` is true).
+- `projects_share_set(p_id, p_user_ids)` - tile admin or super user: the whole list; every id must be an active user with the tile (`INVALID:user_ids`), at most 200, the creator is skipped; adds and removals are history lines (`shared with @a, @b` / `sharing ended for @c`) and one audit line.
+- `projects.can_open(profile, project)` - internal helper: creator, member, tile admin or super user.
 
 ## Decisions
 - 2026-11-04 - **Features learned from the old tool** (`Thinkneering`, `tools/projects`; no code, data or layout copied): a project is name + client type + client name + region, with a code `P-<year>-<number>` that is never reused; the register has find and filters (region, client type), a count, a download of the list, and each project a details form and a history. The old tool's "share with a person" is replaced by DAME access: everyone with the tile sees every project, which is what a team register is for. Its "created by" filter is not built; the column is shown instead.
@@ -57,7 +60,7 @@ A user with the tile and no right reads his projects only. The owner enters the 
 - 2026-11-05 (owner) - **Move the tool as it is.** Features, screens, flows and outputs stay what Thinkneering's `docs/End-to-End-Walkthrough.md` describes (with `docs/Screen-Map.md` and `docs/Compliance-Process.md` sections 1-2). The browser code (PDF readers, table parser, spec engine, clause-to-row matcher, Excel writers, pages) is brought over and adapted to the DAME core the way the Tools tile was: standard `<head>` and CSP, core guard and topbar, theme tokens and the tile accent, the old API calls replaced by `Core.rpc('projects_*')`. The server side (Worker + D1) is rewritten as Postgres functions `public.projects_*` in schema `projects`, route for route (`pr_*`, `cm_*`, `dn_*`, `po_*`), each behind `core.require_tile('projects', <right>)`, with the same checks the old routes made. The earlier line "no code copied" is withdrawn. Vendored pdf.js comes from the Thinkneering copy with its licence; the Excel writer is the tool's own.
 - 2026-11-05 (owner) - **No AI.** Left out: `ai_*` routes, Focus-mode proposals, the whole-specification AI review, AI rules, Check the AI, the vocabulary maps, AI notes in Product Options. Focus mode stays as the manual clause-by-clause pane. Pages lose their AI buttons, not their layout.
 - 2026-11-05 (owner) - **Maps are not in this tile.** Rule books, knowledge maps and the vocabulary (`mp_*`) go to a separate tile later, discussed once the compliance maker, the datasheet reading and Product Options are ready here. Nothing here may depend on a map.
-- 2026-11-05 (owner) - **Who does what.** `edit` users work in their own projects only; tile admins and the super user review and work in any project and hold `review` for Compliance review and Product Options. No `members` table: there is no sharing between users; an admin's access covers hand-over.
+- 2026-11-05 (owner) - **Who does what.** Users see their own projects and the projects an admin shared with them, and work in those only (step 1c, `projects.members`, as the old tool's `pr_members`); tile admins and the super user see, review and work in any project, share projects, and hold `review` for Compliance review and Product Options. Sharing is by admins only (the old tool also let a creator with edit rights share; here the owner asked for admins). Later steps inherit it: the datasheet tables, records and downloads of a project are reached only through `projects.can_open`.
 - 2026-11-05 (owner) - **Under every clause, three helps at once, one legend line:** (a) the library's approved answer for an identical clause of the same factory, pre-filled and marked green; (b) the project's datasheet value(s) for the row the clause asks about, blue chips (`pr-match.js` + `cm-rows.js` matcher with the topic gate, one entry per row key, newest table per unit wins); (c) where no datasheet value exists for that row (no datasheet, or the row is not on it), the factory's **approved** Product Options for that row as dashed chips in a third colour (exact value, else the closest higher, never lower; "choose:" lists; "none seen meets it"). (c) extends the old tool, which fell back to Product Options only when the project had no datasheet at all; here the fallback is per row. One matcher in the browser; a server copy only if a function must match on the server (the selection list), and then the two must agree.
 - 2026-11-05 (owner) - **Nothing goes live unapproved.** A user's answer is the project's answer at once and goes to review; only an approved answer becomes the library's. A Product Options value collected from a datasheet is "to approve" until a reviewer approves it; chips, the selection list and the Excel show approved values only.
 - 2026-11-05 (owner) - **PDFs are not stored.** A specification keeps only its clauses (`cm_runs` / `cm_run_lines` / `cm_lines` as tables of schema `projects`); a datasheet keeps only the table read from it, as `jsonb` in a table of schema `projects` (the old tool's R2 JSON). The PDF stays on the user's device. Bucket `projects` only if a later step needs real files.

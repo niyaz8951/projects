@@ -16,6 +16,19 @@
 
 /* project page */
 .pr-head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.pr-card-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.pr-card-head h2 { margin-bottom: 0; }
+.pr-card-head + * { margin-top: var(--space-3); }
+.pr-members { list-style: none; margin: 0; padding: 0; }
+.pr-members li { padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+.pr-members li:last-child { border-bottom: 0; }
+.pr-members .meta { display: block; color: var(--text-3); font-size: 0.85rem; }
+
+/* share sheet */
+.pr-share { min-width: min(440px, 86vw); }
+.pr-share .pr-share-list { max-height: 50vh; overflow: auto; margin: var(--space-2) 0; }
+.pr-share .check { padding: 6px 0; }
+.pr-share .check .sub { color: var(--text-3); font-size: 0.85rem; margin-left: 4px; }
 .pr-facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 0; }
 .pr-facts dt { color: var(--text-2); }
 .pr-facts dd { margin: 0; word-break: break-word; }

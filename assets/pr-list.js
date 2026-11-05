@@ -13,7 +13,7 @@
     $('#new').hidden = !canEdit;
     $('#intro').textContent = seesAll
       ? 'Every project of the team. Open a project to see its details and history.'
-      : 'Your projects. Open a project to see its details and history.';
+      : 'Your projects, and the projects shared with you. Open a project to see its details and history.';
 
     // filters
     PR.lists().then(function (lists) {
@@ -53,7 +53,9 @@
         var tr = el('tr', { tabindex: '0', role: 'link', 'aria-label': 'Open ' + p.name, on: {
           click: function () { open(p.id); },
           keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(p.id); } } } },
-          el('td', null, el('span', { class: 'name', text: p.name }), el('span', { class: 'sub code', text: p.code })),
+          el('td', null, el('span', { class: 'name', text: p.name }),
+            !seesAll && p.created_by_name !== me.username ? el('span', { class: 'badge accent', text: 'shared with you' }) : null,
+            el('span', { class: 'sub code', text: p.code })),
           el('td', { 'data-label': 'Client' }, p.client_name, el('span', { class: 'sub', text: p.client_type })),
           el('td', { 'data-label': 'Region', text: p.region }),
           seesAll ? el('td', { 'data-label': 'Created by', text: p.created_by_name }) : null,

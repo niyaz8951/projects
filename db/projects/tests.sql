@@ -116,6 +116,48 @@ begin
   select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'other user sees own'; end if;
   if (select bool_or(sees_all) from public.projects_list(null, null, null)) then raise exception 'user sees_all'; end if;
   reset role;
+
+  -- sharing (003): only a tile admin or the super user shares; a member sees, opens and edits, cannot share on
+  perform pg_temp.act_as('demo_user'); -- creator, not an admin
+  perform pg_temp.expect_error(format('select public.projects_share_get(%L)', v_id), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_share_set(%L, array[%L]::uuid[])', v_id, (select id from t_ids where k = 'demo_none')), 'NO_RIGHT');
+  reset role;
+  perform pg_temp.act_as('demo_none'); -- not yet a member
+  perform pg_temp.expect_error(format('select public.projects_share_get(%L)', v_id), 'NOT_FOUND');
+  reset role;
+  perform pg_temp.act_as('demo_admin');
+  select public.projects_share_get(v_id) into v;
+  if jsonb_array_length(v -> 'members') <> 0 or (v ->> 'created_by_name') <> 'demo_user' then raise exception 'share_get empty'; end if;
+  if not (v ? 'users') or not (v ? 'core_missing') then raise exception 'share_get shape'; end if;
+  perform pg_temp.expect_error(format('select public.projects_share_set(%L, array[%L]::uuid[])', v_id, (select id from t_ids where k = 'demo_pending')), 'INVALID:user_ids');
+  perform pg_temp.expect_error(format('select public.projects_share_set(%L, array[%L]::uuid[])', v_id, gen_random_uuid()), 'INVALID:user_ids');
+  select public.projects_share_set(v_id, array[(select id from t_ids where k = 'demo_none'), (select id from t_ids where k = 'demo_user')]) into v;
+  if (v ->> 'members')::int <> 1 or (v ->> 'added')::int <> 1 then raise exception 'share_set adds one, never the creator: %', v; end if;
+  select public.projects_share_set(v_id, array[(select id from t_ids where k = 'demo_none')]) into v;
+  if (v ->> 'added')::int <> 0 or (v ->> 'removed')::int <> 0 then raise exception 'share_set same list, no change'; end if;
+  select public.projects_get(v_id) into v;
+  if jsonb_array_length(v -> 'members') <> 1 or (v -> 'members' -> 0 ->> 'username') <> 'demo_none' then raise exception 'get members'; end if;
+  if (v -> 'events' -> 0 ->> 'action') <> 'shared with' or (v -> 'events' -> 0 ->> 'detail') <> '@demo_none' then raise exception 'share event: %', v -> 'events' -> 0; end if;
+  if not (v ->> 'can_share')::boolean then raise exception 'admin can_share'; end if;
+  select max(members) into n from public.projects_list(v_code, null, null); if n <> 1 then raise exception 'list members count'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_none'); -- member with 'edit': sees, opens, edits; cannot share
+  select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'member sees own + shared: %', n; end if;
+  select public.projects_get(v_id) into v; if (v ->> 'can_share')::boolean then raise exception 'member can_share'; end if;
+  perform public.projects_update(v_id, 'Sample Tower D', 'Contractor', 'Sample Consultants', 'UAE');
+  perform pg_temp.expect_error(format('select public.projects_share_get(%L)', v_id), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_share_set(%L, ''{}''::uuid[])', v_id), 'NO_RIGHT');
+  reset role;
+  perform pg_temp.act_as('demo_admin'); -- sharing ended
+  select public.projects_share_set(v_id, '{}'::uuid[]) into v;
+  if (v ->> 'removed')::int <> 1 then raise exception 'share_set removes'; end if;
+  select public.projects_get(v_id) into v;
+  if (v -> 'events' -> 0 ->> 'action') <> 'sharing ended for' then raise exception 'unshare event'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_none');
+  select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'ex-member sees own only'; end if;
+  perform pg_temp.expect_error(format('select public.projects_get(%L)', v_id), 'NOT_FOUND');
+  reset role;
   delete from core.tile_access where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_none');
 
   -- a user with the tile but no right: reads, cannot write
