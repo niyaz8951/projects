@@ -115,7 +115,9 @@
     if (!chipsDue) return;
     setTimeout(function () { var a = document.activeElement; if (chipsDue && !(a && $("rc-body").contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) { chipsDue = false; settled().then(draw); } }, 300);
   });
+  // the answers (Matching rules > Answers, 014): picked from a list, never typed; the six standard ones until the setting is read
   var CHOICES = ["Comply", "Comply with Remarks", "Noted", "Not Comply", "Not Applicable", "In Contractor's Scope"];
+  var choicesP = Hub.answerChoices().then(function (c) { CHOICES = c; return c; });
 
   /* In Edit a clause is first drawn as text and gets its boxes when it comes near the window (Hub.lazyRows). */
   var lazy = Hub.lazyRows(function (tr) { return row(tr._line, true); });
@@ -155,10 +157,10 @@
       if (editing) lazy.watch(plain);
       return plain;
     }
-    var comp = Hub.allChoices(el("input", { "class": "input", value: s.c, maxlength: "200", list: "rc-words", "aria-label": "Compliance" }));
+    var comp = Hub.answerPick(s.c, CHOICES);
     var rem = el("textarea", { "class": "input", rows: "1", maxlength: "4000", "aria-label": "Remarks" }); rem.value = s.r; Hub.autoGrow(rem);
     var tr = el("tr", { "class": "line edit" + rowClass }, [
-      el("td", { "class": "sr " + kind, text: l.sr }), el("td", {}, [text, reason, chips]), el("td", { "data-label": "Compliance" }, [comp]), el("td", { "data-label": "Remarks" }, [rem]),
+      el("td", { "class": "sr " + kind, text: l.sr }), el("td", {}, [text, reason, chips]), el("td", { "data-label": "Compliance" }, [comp.box]), el("td", { "data-label": "Remarks" }, [rem]),
       run.can_review ? el("td", { "data-label": "TL Review" }, [reviewBox(l)]) : el("td", { "class": "tl", "data-label": "TL Review", text: l.tl_review || "" }),
       run.can_comment ? el("td", { "data-label": "Internal Comments" }, [commentBox(l)]) : el("td", { "class": "note", "data-label": "Internal Comments", text: l.lib_comments || "" }),
       el("td", { "class": "end" }, [state, tools(l)])
@@ -169,9 +171,9 @@
       if (e.key !== "Enter") return;
       e.preventDefault();
       var nx = tr.nextElementSibling;
-      while (nx && !(nx.classList.contains("line") && (nx._lazy || nx.querySelector("input")))) nx = nx.nextElementSibling;
+      while (nx && !(nx.classList.contains("line") && (nx._lazy || nx.querySelector("select.answer-pick")))) nx = nx.nextElementSibling;
       if (nx && nx._lazy) nx = lazy.now(nx);
-      if (nx) nx.querySelector("input").focus(); else comp.blur();
+      if (nx) nx.querySelector("select.answer-pick").focus(); else comp.blur();
     });
     var busy = null;                                    // one save at a time; resolves true when the answer is stored
     function save() {
@@ -475,6 +477,7 @@
     $("rc-loading").hidden = true; $("rc-main").hidden = false;
     if (!run.can_edit) { $("rc-seg").hidden = true; $("rc-mode").textContent = "Reading only."; }
     setMode(false, true); counts(); draw(); reviewNote();
+    choicesP.then(function (c) { [].forEach.call(document.querySelectorAll("select.answer-pick"), function (s) { if (s.setChoices) s.setChoices(c); }); });   // the admin's list, in place
     Hub.autoHide($("rc-workbar"));
     Hub.more($("rc-more"), [$("rc-download"), $("rc-download-work")], "This specification");
     Hub.dock([el("button", { type: "button", "class": "btn", text: "Focus mode", onclick: focusMode })]);
@@ -519,10 +522,11 @@
   var hintsOf = {};
   function hintChips(l) {
     var c = shown(l).c;
-    return (hintsOf[lines.indexOf(l)] || []).filter(function (h) { return h.answer !== c; }).map(function (h) {
+    // only answers that are in the list (an admin may have renamed or removed one)
+    return (hintsOf[lines.indexOf(l)] || []).filter(function (h) { return h.answer !== c && CHOICES.indexOf(h.answer) >= 0; }).map(function (h) {
       return el("button", { type: "button", "class": "rc-chip hint", title: h.answer + "? " + h.reason + "." + (editing ? " Press to answer it." : " Switch to Edit to answer it with one press."),
         onclick: function (e) {
-          var tr = e.currentTarget.closest("tr"), box = tr && tr.querySelector("input[list]");
+          var tr = e.currentTarget.closest("tr"), box = tr && tr.querySelector("select.answer-pick");
           if (!box) { Hub.toast("Switch to Edit, then press the hint to answer it."); return; }
           box.value = h.answer; box.dispatchEvent(new Event("change"));        // saved as if typed; Remarks stay the reader's
           e.currentTarget.remove();

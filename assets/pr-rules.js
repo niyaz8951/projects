@@ -32,6 +32,7 @@
     vocab_products: 'Match this product by its vocabulary',
     vocab_fallback: 'Keywords where the vocabulary finds nothing',
     vocab_types: 'Requirement types per clause, at most',
+    answer_choices: 'The answers of the Compliance column',
     hint_scope: 'Hint "In Contractor\'s Scope?"',
     hint_absent: 'Hint "Not Applicable?"',
     scope_parts: 'Parts that are the contractor\'s work',
@@ -58,6 +59,7 @@
     choose_listed: 'In "choose: ..." and "none of the values seen meets ...", the rest as "and n more".',
     vocab_products: 'Off: every datasheet row is found by its Spec keywords, as before. On: a row that a verified type of the vocabulary points at (Row:) is found by the vocabulary - what the clause asks, by its landmarks; a "#2" row (Filter 2) gets only the clauses about it. Rows no verified type points at keep their Spec keywords. Only verified items are read.',
     vocab_fallback: 'For a row the vocabulary covers but finds no clause for in this specification: on, its Spec keywords are used instead (you never see fewer rows than with keywords); off, the row stays empty (no keyword guesses for rows the vocabulary covers).',
+    answer_choices: 'Users pick the Compliance of a clause from this list, in this order; nothing else can be typed or saved (the database refuses it). One answer per line. Add one when the team needs it; renaming or removing one leaves the answers already saved as they are - they show "(not in the list)" until someone picks again. The hints use "Not Applicable" and "In Contractor\'s Scope": keep them in the list for the hints to work. An uploaded Excel file still puts its words into these standard ones ("By contractor" becomes "In Contractor\'s Scope").',
     hint_scope: 'Under a clause that is the contractor\'s work, a dotted hint "In Contractor\'s Scope?" with the reason. The compliance is answered as the manufacturer (AHU, FCU or chiller maker) for the contractor and the consultant. In Edit a press on the hint answers the clause; nothing is ever filled by itself.',
     hint_absent: 'Under a clause that asks for something the unit has not (no humidifier, no heater, belts with EC direct-drive fans ...), a dotted hint "Not Applicable?" with the reason. Only when the project holds a datasheet of the product: the datasheet is the proof.',
     scope_parts: 'Every clause of these Parts gets the hint (Part 3, Execution: installation, connections, field tests, cleaning), unless the clause or its section names the manufacturer\'s own work (below). Leave it empty to hint by words and section titles only.',
@@ -72,6 +74,7 @@
   var TABS = {
     find: ['topics', 'general_topics', 'section_topics', 'parts', 'near_words', 'max_clauses', 'keep_share', 'heading_words', 'heading_verbs', 'label_chars'],
     picks: ['properties', 'figure_words', 'option_values', 'candidates_shown', 'choose_listed'],
+    answers: ['answer_choices'],
     hints: ['hint_scope', 'hint_absent', 'scope_parts', 'scope_words', 'scope_sections', 'scope_manufacturer', 'absent_rules']
   };
   var DIRECTIONS = [['higher', 'Higher is better'], ['lower', 'Lower is better'], ['exact', 'Must match']];
@@ -330,8 +333,17 @@
     cards.__drawAbsent = draw;
     return host;
   }
+  // the answers: one per line, in order
+  function answersEditor() {
+    var ta = el('textarea', { rows: 8, id: 'in-answer_choices', class: 'mr-text', spellcheck: 'false' });
+    ta.value = state.draft.answer_choices.join('\n');
+    ta.addEventListener('input', function () { setDraft('answer_choices', ta.value.split('\n').map(function (x) { return x.trim().replace(/\s+/g, ' '); }).filter(Boolean)); });
+    return el('div', {}, el('label', { for: 'in-answer_choices', class: 'sr-only', text: TITLES.answer_choices }), ta,
+      el('p', { class: 'faint small', text: 'One answer per line, in the order of the list. Built-in: ' + S.DEFAULTS.answer_choices.join(', ') }));
+  }
   function V_PRODUCT() { return (state.products[0] || {}).id || 'ahu'; }
   function editorFor(key) {
+    if (key === 'answer_choices') return answersEditor();
     if (key === 'hint_scope') return boolEditor(key, ' Show "In Contractor\'s Scope?" under the clauses that are the contractor\'s work');
     if (key === 'hint_absent') return boolEditor(key, ' Show "Not Applicable?" under the clauses that ask for something the unit has not');
     if (key === 'scope_parts') return listEditor(key, false);
@@ -358,6 +370,9 @@
       el('p', { class: 'muted', text: 'For a row the project has no datasheet value for, the dashed chip names the approved Product Options value that meets the clause. These settings decide what "meets" and "better" mean.' }),
       TABS.picks.map(function (k) { return card(k, editorFor(k)); }));
     panels.vocab = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'vocab', hidden: true }, vocabPanel());
+    panels.answers = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'answers', hidden: true },
+      el('p', { class: 'muted', text: 'The Compliance of a clause is picked from a list - on the record, in Focus mode and in Compliance review - and never typed, so every compliance sheet speaks the same words. Remarks stay free text.' }),
+      TABS.answers.map(function (k) { return card(k, editorFor(k)); }));
     panels.hints = el('div', { class: 'stack', role: 'tabpanel', 'data-panel': 'hints', hidden: true },
       el('p', { class: 'muted', text: 'The compliance is answered as the manufacturer, for the contractor and the consultant. Two answers come up again and again: the contractor\'s work ("In Contractor\'s Scope") and what the unit does not have ("Not Applicable"). These rules put a dotted hint under such clauses; a press on it in Edit answers the clause. A hint is never filled by itself, and an approved library answer of the same clause (green) still comes first.' }),
       TABS.hints.map(function (k) { return card(k, editorFor(k)); }));
@@ -380,6 +395,7 @@
     else if (key === 'section_topics' && cards.__drawSections) cards.__drawSections();
     else if (key === 'properties' && cards.__drawProps) cards.__drawProps();
     else if (key === 'absent_rules' && cards.__drawAbsent) cards.__drawAbsent();
+    else if (key === 'answer_choices') { var ta = document.getElementById('in-answer_choices'); if (ta) ta.value = state.draft.answer_choices.join('\n'); }
     else if (key === 'hint_scope' || key === 'hint_absent') { var b = document.getElementById('in-' + key); if (b) b.checked = state.draft[key] !== false; }
     else {
       var input = document.getElementById('in-' + key);

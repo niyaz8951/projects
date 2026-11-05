@@ -187,7 +187,7 @@
         box.appendChild(el('div', { 'class': 'cf-sug-act' }, [
           el('button', { type: 'button', 'class': 'btn', text: 'Keep & next', onclick: function () { keep(true); } }),
           el('button', { type: 'button', 'class': 'btn ghost', text: 'Keep', onclick: function () { keep(false); } }),
-          el('button', { type: 'button', 'class': 'btn ghost', text: 'Not this', onclick: function () { it._noSug = true; box.remove(); comp.focus(); } })]));
+          el('button', { type: 'button', 'class': 'btn ghost', text: 'Not this', onclick: function () { it._noSug = true; box.remove(); if (chipBox && chipBox.firstChild) chipBox.firstChild.focus(); } })]));
       }, function () { box.remove(); });
       return box;
     }
@@ -227,7 +227,10 @@
         var afterR = ctx(i + 1); if (afterR) inner.appendChild(afterR);
         body.scrollTop = 0; progress(); return;
       }
-      comp = el('input', { 'class': 'input', maxlength: '200', placeholder: 'Or type another answer', 'aria-label': 'Compliance' }); comp.value = it.compliance || '';
+      // the answer is picked from the pills only, never typed (owner, 2026-11-05): the box holds it but is not shown
+      comp = el('input', { type: 'hidden' }); comp.value = it.compliance || '';
+      var odd = comp.value && !(o.choices || []).some(function (c) { return c.toLowerCase() === comp.value.trim().toLowerCase(); })
+        ? el('div', { 'class': 'cf-odd', role: 'note', text: 'Answer saved before: \u201c' + comp.value + '\u201d. It is not in the list of answers: pick one above.' }) : null;
       rem = el('textarea', { 'class': 'input', maxlength: '4000', placeholder: 'Remarks (optional)', 'aria-label': 'Remarks' }); rem.value = it.remarks || '';
       note = it.comments === undefined ? null : el('textarea', { 'class': 'input', maxlength: '4000', placeholder: 'Internal comments: users see them beside this clause', 'aria-label': 'Internal Comments' });
       if (note) note.value = it.comments || '';
@@ -241,17 +244,17 @@
         return el('button', { type: 'button', 'class': 'cf-chip', text: c, 'aria-pressed': 'false', onclick: function () {
           comp.value = comp.value.trim().toLowerCase() === c.toLowerCase() ? '' : c;      // a second tap takes the answer off
           try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) { /* no haptics */ }
+          if (odd && odd.parentNode) odd.remove();
           chips(); commit();
         } });
       }));
       chips();
-      comp.addEventListener('input', chips);
-      [comp, rem, note, tl].forEach(function (b) { if (b) b.addEventListener('change', commit); });
+      [rem, note, tl].forEach(function (b) { if (b) b.addEventListener('change', commit); });
       whyBox = why(it);
       var sugBox = suggestion(it);
       inner.appendChild(el('div', { 'class': 'cf-answer' }, [el('div', { 'class': 'cf-label', text: 'Compliance' }), whyBox, whyBox ? el('div', { style: 'height:8px' }) : null,
-        sugBox, sugBox ? el('div', { style: 'height:8px' }) : null, chipBox,
-        el('div', { style: 'height:8px' }), comp, el('div', { style: 'height:10px' }), el('div', { 'class': 'cf-label', text: 'Remarks' }), rem,
+        sugBox, sugBox ? el('div', { style: 'height:8px' }) : null, chipBox, odd,
+        el('div', { style: 'height:10px' }), el('div', { 'class': 'cf-label', text: 'Remarks' }), rem,
         tl || it.review ? el('div', { style: 'height:10px' }) : null, tl || it.review ? el('div', { 'class': 'cf-label', text: 'TL Review' }) : null, tl || (it.review ? el('div', { 'class': 'cf-val tl', text: it.review }) : null),
         note ? el('div', { style: 'height:10px' }) : null, note ? el('div', { 'class': 'cf-label', text: 'Internal Comments' }) : null, note, state]));
       if (it.others && it.others.length) inner.appendChild(el('div', { 'class': 'cf-others' }, it.others.map(function (t) { return el('div', { text: t }); })));

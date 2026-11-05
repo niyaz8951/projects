@@ -94,6 +94,9 @@
     vocab_fallback: true,        // a row the vocabulary covers but finds no clause for in this specification: its Spec keywords are used
     vocab_types: 6,              // 012: requirement types read per clause (only types that point at a datasheet row count)
 
+    /* ---- 0. The answers (014): the Compliance of a clause is one of these, picked, never typed (owner, 2026-11-05) ---- */
+    answer_choices: ['Comply', 'Comply with Remarks', 'Noted', 'Not Comply', 'Not Applicable', "In Contractor's Scope"],
+
     /* ---- 4. Hints under a clause (013, pr-hints.js): answered as the manufacturer; a tap in Edit fills the answer ---- */
     hint_scope: true,            // "In Contractor's Scope?"
     hint_absent: true,           // "Not Applicable?"
@@ -170,6 +173,17 @@
     if (key === 'parts') {
       return Array.isArray(v) && v.length >= 1 && v.length <= 5 && v.every(function (n, k) { return typeof n === 'number' && Math.floor(n) === n && n >= 1 && n <= 9 && v.indexOf(n) === k; })
         ? '' : '1 to 5 different Part numbers from 1 to 9';
+    }
+    if (key === 'answer_choices') {
+      if (!Array.isArray(v) || !v.length || v.length > 20) return '1 to 20 answers';
+      var seenA = {};
+      for (var q = 0; q < v.length; q++) {
+        var s2 = v[q];
+        if (typeof s2 !== 'string' || s2 !== s2.trim() || !s2.length || s2.length > 60 || /[\u0000-\u001f]/.test(s2)) return 'answer ' + (q + 1) + ': 1 to 60 characters';
+        if (seenA[s2.toLowerCase()]) return 'the answer "' + s2 + '" is listed twice';
+        seenA[s2.toLowerCase()] = 1;
+      }
+      return '';
     }
     if (key === 'hint_scope' || key === 'hint_absent') return typeof v === 'boolean' ? '' : 'yes or no';
     if (key === 'scope_parts') {

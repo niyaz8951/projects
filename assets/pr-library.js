@@ -5,6 +5,9 @@
    clauses; a link may name the factory and a project code (?factory=&code=). */
 (function () {
   "use strict";
+  // the answers (Matching rules > Answers, 014): picked, never typed
+  var LIB_CHOICES = ["Comply", "Comply with Remarks", "Noted", "Not Comply", "Not Applicable", "In Contractor's Scope"];
+  Hub.answerChoices().then(function (c) { LIB_CHOICES = c; [].forEach.call(document.querySelectorAll("select.answer-pick"), function (s) { if (s.setChoices) s.setChoices(c); }); });
   var $ = function (id) { return document.getElementById(id); };
   var el = Hub.el, PAGE = 100;
   var products = [], offset = 0, total = 0, pending = null, searchTimer, shownLines = [], editing = false;
@@ -49,7 +52,7 @@
   /* In Edit a line is first drawn as text and gets its boxes when it comes near the window (Hub.lazyRows). */
   var lazy = Hub.lazyRows(function (tr) { return lineRow(tr._line, true); });
   function lineRow(l, boxes) {
-    var comp = Hub.allChoices(el("input", { "class": "input", list: "answers", value: l.compliance || "", maxlength: "200", "aria-label": "Compliance" }));
+    var comp = Hub.answerPick(l.compliance || "", LIB_CHOICES);
     var rem = el("textarea", { "class": "input", rows: "1", maxlength: "4000", "aria-label": "Remarks" }); rem.value = l.remarks || ""; Hub.autoGrow(rem);
     var note = el("textarea", { "class": "input", rows: "1", maxlength: "4000", "aria-label": "Internal Comments", placeholder: "Note for users  # for reviewers" }); note.value = l.comments || ""; Hub.autoGrow(note);
     // Enter in Compliance goes to the next line, so a run of answers is typed without the mouse
@@ -57,9 +60,9 @@
       if (e.key !== "Enter") return;
       e.preventDefault();
       var nx = row.nextElementSibling;
-      while (nx && !(nx.classList.contains("line") && (nx._lazy || nx.querySelector("input")))) nx = nx.nextElementSibling;
+      while (nx && !(nx.classList.contains("line") && (nx._lazy || nx.querySelector("select.answer-pick")))) nx = nx.nextElementSibling;
       if (nx && nx._lazy) nx = lazy.now(nx);
-      if (nx) nx.querySelector("input").focus(); else comp.blur();
+      if (nx) nx.querySelector("select.answer-pick").focus(); else comp.blur();
     });
     var state = el("span", { "class": "state", "aria-live": "polite" });
     var saved = { c: l.compliance || "", r: l.remarks || "", n: l.comments || "" };
@@ -132,7 +135,7 @@
       return plain;
     }
     var row = el("tr", { "class": "line edit" }, first.concat([
-      el("td", { "data-label": "Compliance" }, [comp]), el("td", { "data-label": "Remarks" }, [rem]), el("td", { "data-label": "Internal Comments" }, [note]),
+      el("td", { "data-label": "Compliance" }, [comp.box]), el("td", { "data-label": "Remarks" }, [rem]), el("td", { "data-label": "Internal Comments" }, [note]),
       el("td", { "class": "who", "data-label": "Filled by", text: who.join(", ") }),
       el("td", { "class": "end" }, [state, del])       // status above Delete, inside the column: nothing leaves the window
     ]));
@@ -257,7 +260,7 @@
     });
     var first = 0; for (var k = 0; k < items.length; k++) if (!items[k].compliance && !items[k].remarks) { first = k; break; }
     CMFocus.open({ title: scopeName() + " library", items: items, start: first,
-      choices: ["Comply", "Comply with Remarks", "Noted", "Not Comply", "Not Applicable", "In Contractor's Scope"],
+      choices: LIB_CHOICES,
       save: function (it, v) {
         return Api.cmAdminSaveAnswer(Hub.token(), it.line.id, v.compliance, v.remarks, v.comments).then(function () {
           it.compliance = v.compliance; it.remarks = v.remarks; it.comments = v.comments; return {};

@@ -52,6 +52,10 @@
     {
       "name": "013_hints",
       "path": "db/projects/013_hints.sql"
+    },
+    {
+      "name": "014_answer_list",
+      "path": "db/projects/014_answer_list.sql"
     }
   ]
 }

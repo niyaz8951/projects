@@ -164,29 +164,43 @@
     return { watch: function (tr) { tr._lazy = true; if (io) io.observe(tr); else return swap(tr); return tr; }, now: swap, on: !!io, stop: function () { if (io) io.disconnect(); } };
   }
 
-  /* ---------- an answer box with a list (datalist): every choice on a click ----------
-     A browser shows only the choices that match what the box holds, so a box already answered "Comply" offered
-     "Comply" and "Comply with Remarks" only (owner, 2026-11-05: "whenever a drop down is clicked all options must be
-     available"). On a click the answer moves into the placeholder and the box is emptied, so the whole list shows;
-     leaving the box without picking or typing puts the answer back (no save: the value is the same), and Escape does
-     too. Typing still narrows the list as before. Call it before the box's own blur / change handlers are added. */
-  function allChoices(input) {
-    var held = null, hint = input.placeholder;
-    function open() {
-      if (held !== null || !input.value) return;
-      held = input.value; input.placeholder = held; input.value = '';
+  /* ---------- the Compliance of a clause: a pill to pick from, never typed (owner, 2026-11-05: "user must always select
+     from drop down only; if anything is needed admin can add in drop down"). A native list, so every answer shows on a
+     click and phones get their own picker. The answers are the setting answer_choices (Matching rules > Answers); an
+     answer saved before that is not in the list shows as "... (not in the list)" until one of the list is picked.
+     .value is '' for no answer. ---------- */
+  /* The native list sits, invisible, over a pill that shows the whole answer and wraps in a narrow column (owner: "Comply
+     with" was cut off). The list keeps the click, the keyboard and the phone's own picker. Put pick.box in the page. */
+  function answerPick(value, choices, label) {
+    var s = el('select', { 'class': 'answer-pick', 'aria-label': label || 'Compliance' });
+    var shown = el('span', { 'class': 'answer-text', 'aria-hidden': 'true' });
+    var box = el('span', { 'class': 'answer-pill' }, [shown, el('span', { 'class': 'answer-caret', 'aria-hidden': 'true' }), s]);
+    s.box = box;
+    function fill(list, v) {
+      choices = list; v = v || '';
+      while (s.firstChild) s.removeChild(s.firstChild);
+      s.appendChild(el('option', { value: '', text: v ? 'No answer' : 'Choose\u2026' }));
+      var match = list.filter(function (c) { return c.toLowerCase() === v.toLowerCase(); })[0];
+      if (v && !match) s.appendChild(el('option', { value: v, text: v + ' (not in the list)', disabled: true }));
+      list.forEach(function (c) { s.appendChild(el('option', { value: c, text: c })); });
+      s.value = match || v; paint();
     }
-    function restore() {
-      if (held === null) return;
-      if (!input.value) input.value = held;
-      held = null; input.placeholder = hint;
+    function paint() {
+      var set = !!s.value, odd = set && choices.indexOf(s.value) < 0;
+      s.classList.toggle('set', set); s.classList.toggle('odd', odd);
+      box.classList.toggle('set', set); box.classList.toggle('odd', odd);
+      shown.textContent = set ? (odd ? s.value + ' (not in the list)' : s.value) : 'Choose\u2026';
     }
-    input.addEventListener('mousedown', open);
-    input.addEventListener('touchstart', open, { passive: true });
-    input.addEventListener('input', function () { if (held !== null && input.value) { held = null; input.placeholder = hint; } });
-    input.addEventListener('keydown', function (e) { if (e.key === 'Escape' && held !== null) { input.value = held; held = null; input.placeholder = hint; } });
-    input.addEventListener('blur', restore);
-    return input;
+    s.addEventListener('change', paint);
+    s.setChoices = function (list) { fill(list, s.value); };        // the admin's list, read after the pill was drawn
+    fill(choices, value || '');
+    return s;
+  }
+  /* the answers to offer: the setting when the page has it, else the six standard ones */
+  function answerChoices() {
+    var std = ['Comply', 'Comply with Remarks', 'Noted', 'Not Comply', 'Not Applicable', "In Contractor's Scope"];
+    if (!window.PRSettings) return Promise.resolve(std);
+    return window.PRSettings.load().then(function (s) { return (s && s.values && s.values.answer_choices) || std; }, function () { return std; });
   }
 
   /* ---------- the pages' back link ("Back to <place>") ---------- */
@@ -203,7 +217,7 @@
     date: function (iso, time) { return time ? Core.dateTime(iso) : Core.date(iso); },
     param: Core.param, go: Core.go, setBack: setBack,
     skeleton: skeleton, emptyState: emptyState, more: more, dock: dock, dragClose: dragClose,
-    autoHide: autoHide, autoGrow: autoGrow, lazyRows: lazyRows, allChoices: allChoices,
+    autoHide: autoHide, autoGrow: autoGrow, lazyRows: lazyRows, answerPick: answerPick, answerChoices: answerChoices,
     token: function () { return ''; },                                   // the core sends the session itself
     requireLogin: function (o) { return Core.requireLogin({ tile: PR.TILE, right: o && o.right }); },
     canEdit: function () { return PR.canEdit(Core.user); },
@@ -213,6 +227,7 @@
 
   /* ---------- the old API names, as calls to the tile's functions (the first argument was the old token) ---------- */
   var SAYS = {
+    'INVALID:compliance': 'Pick the answer from the list. An admin can add one on Matching rules > Answers.',
     'INVALID:check': 'The rows were changed since this page was opened. Reload the page; nothing was saved.',
     'INVALID:join': 'This row cannot be joined that way: a PART row is never joined, a heading cannot keep an answer, and two rows together cannot be longer than 6000 characters.',
     'INVALID:rows': 'The rows could not be saved: the words must stay the same (only line breaks are added), each row needs text, and a record holds at most 8000 rows.',
