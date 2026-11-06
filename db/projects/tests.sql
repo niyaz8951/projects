@@ -1,6 +1,6 @@
--- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 014. Rolled back.
--- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin as tile admin,
--- demo_user with no right: since 009 the tile alone lets a user create and work in his projects) and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
+-- Projects tile tests. Run on STAGING after db/core/seed-staging.sql and db/projects/001 to 015. Rolled back.
+-- Inside the transaction the demo accounts are given the tile 'projects' (demo_admin at level manage, demo_user at
+-- contribute: he creates and works in his projects) and the tile is switched on, so the tests do not depend on the admin page. Nothing stays.
 begin;
 
 do $$
@@ -8,12 +8,15 @@ begin
   if not exists (select 1 from core.tiles where id = 'projects') then
     raise exception 'Register the tile ''projects'' in Admin > Tiles first';
   end if;
+  if not exists (select 1 from core.migrations m where m.repo = 'projects' and m.name = '015_access') then
+    raise exception 'Run db/projects/015_access.sql first';
+  end if;
 end $$;
-update core.tiles set enabled = true, rights = array['review'] where id = 'projects';
-insert into core.tile_access (user_id, tile_id, is_admin, rights)
-  select p.id, 'projects', true, '{}' from core.profiles p where p.username = 'demo_admin' on conflict do nothing;
-insert into core.tile_access (user_id, tile_id, is_admin, rights)
-  select p.id, 'projects', false, '{}' from core.profiles p where p.username = 'demo_user' on conflict do nothing;
+update core.tiles set enabled = true where id = 'projects';
+insert into core.tile_access (user_id, tile_id, level)
+  select p.id, 'projects', 'manage' from core.profiles p where p.username = 'demo_admin' on conflict do nothing;
+insert into core.tile_access (user_id, tile_id, level)
+  select p.id, 'projects', 'contribute' from core.profiles p where p.username = 'demo_user' on conflict do nothing;
 
 create temp table t_ids as select username k, id from core.profiles where username in ('demo_admin','demo_user','demo_none','demo_pending');
 grant select on t_ids to public;
@@ -124,8 +127,8 @@ begin
   reset role;
 
   -- another plain user with the tile: only his own projects; another user's record is NOT_FOUND
-  insert into core.tile_access (user_id, tile_id, is_admin, rights)
-    select id, 'projects', false, '{}' from t_ids where k = 'demo_none';
+  insert into core.tile_access (user_id, tile_id, level)
+    select id, 'projects', 'contribute' from t_ids where k = 'demo_none';
   perform pg_temp.act_as('demo_none');
   select count(*) into n from public.projects_list(null, null, null); if n <> 0 then raise exception 'other user sees nothing: %', n; end if;
   perform pg_temp.expect_error(format('select public.projects_get(%L)', v_id), 'NOT_FOUND');
@@ -587,46 +590,115 @@ begin
   update core.profiles set is_super = false where id = (select id from t_ids where k = 'demo_admin');
   if (select count(*) from projects.dn_map where product_id = 'ahu') = 0 then raise exception 'reset keeps the mapping'; end if;
 
-  -- sharing (003): only a tile admin or the super user shares; a member sees, opens and edits, cannot share on
-  perform pg_temp.act_as('demo_user'); -- creator, not an admin
-  perform pg_temp.expect_error(format('select public.projects_share_get(%L)', v_id), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_share_set(%L, array[%L]::uuid[])', v_id, (select id from t_ids where k = 'demo_none')), 'NO_RIGHT');
-  reset role;
-  perform pg_temp.act_as('demo_none'); -- not yet a member
-  perform pg_temp.expect_error(format('select public.projects_share_get(%L)', v_id), 'NOT_FOUND');
-  reset role;
-  perform pg_temp.act_as('demo_admin');
-  select public.projects_share_get(v_id) into v;
-  if jsonb_array_length(v -> 'members') <> 0 or (v ->> 'created_by_name') <> 'demo_user' then raise exception 'share_get empty'; end if;
-  if not (v ? 'users') or not (v ? 'core_missing') then raise exception 'share_get shape'; end if;
-  perform pg_temp.expect_error(format('select public.projects_share_set(%L, array[%L]::uuid[])', v_id, (select id from t_ids where k = 'demo_pending')), 'INVALID:user_ids');
-  perform pg_temp.expect_error(format('select public.projects_share_set(%L, array[%L]::uuid[])', v_id, gen_random_uuid()), 'INVALID:user_ids');
-  select public.projects_share_set(v_id, array[(select id from t_ids where k = 'demo_none'), (select id from t_ids where k = 'demo_user')]) into v;
-  if (v ->> 'members')::int <> 1 or (v ->> 'added')::int <> 1 then raise exception 'share_set adds one, never the creator: %', v; end if;
-  select public.projects_share_set(v_id, array[(select id from t_ids where k = 'demo_none')]) into v;
-  if (v ->> 'added')::int <> 0 or (v ->> 'removed')::int <> 0 then raise exception 'share_set same list, no change'; end if;
+  -- access (015): projects are containers of the core; sharing is the core's Access panel (core_share_*)
+  if to_regprocedure('public.projects_share_get(uuid)') is not null or to_regclass('projects.members') is not null then raise exception 'old sharing still there'; end if;
+  if not exists (select 1 from core.containers c where c.tile_id = 'projects' and c.kind = 'project' and c.id = v_id::text
+                   and c.owner_id = (select id from t_ids where k = 'demo_user') and c.everyone is null and c.name = v_code || ' Sample Tower C') then
+    raise exception 'container of a new project: private, owned by its creator, named by code and name';
+  end if;
+  perform pg_temp.act_as('demo_user'); -- owner with contribute: shares his own project now (before 015 only managers)
   select public.projects_get(v_id) into v;
-  if jsonb_array_length(v -> 'members') <> 1 or (v -> 'members' -> 0 ->> 'username') <> 'demo_none' then raise exception 'get members'; end if;
-  if (v -> 'events' -> 0 ->> 'action') <> 'shared with' or (v -> 'events' -> 0 ->> 'detail') <> '@demo_none' then raise exception 'share event: %', v -> 'events' -> 0; end if;
-  if not (v ->> 'can_share')::boolean then raise exception 'admin can_share'; end if;
-  select max(members) into n from public.projects_list(v_code, null, null); if n <> 1 then raise exception 'list members count'; end if;
+  if not (v ->> 'can_share')::boolean or not (v ->> 'can_edit')::boolean or (v ->> 'level') <> 'contribute'
+     or not (v -> 'access' ->> 'mine')::boolean or (v -> 'access' ->> 'everyone') is not null or (v -> 'access' ->> 'shared')::int <> 0 then raise exception 'owner get: %', v; end if;
+  if v ? 'members' then raise exception 'get still has members'; end if;
+  select public.core_share_set('projects', 'project', v_id::text, null,
+    jsonb_build_array(jsonb_build_object('type', 'user', 'id', (select id from t_ids where k = 'demo_none'), 'level', 'read'))) into v;
+  if jsonb_array_length(v -> 'shares') <> 1 then raise exception 'owner shares: %', v; end if;
+  select shared into n from public.projects_list(v_code, null, null); if n <> 1 then raise exception 'list shared count'; end if;
+  if not (select bool_and(mine) and bool_and(level = 'contribute') from public.projects_list(null, null, null)) then raise exception 'list mine / level'; end if;
   reset role;
-  perform pg_temp.act_as('demo_none'); -- member: sees, opens, edits; cannot share
-  select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'member sees own + shared: %', n; end if;
-  select public.projects_get(v_id) into v; if (v ->> 'can_share')::boolean then raise exception 'member can_share'; end if;
-  perform public.projects_update(v_id, 'Sample Tower D', 'Contractor', 'Sample Consultants', 'UAE');
-  perform pg_temp.expect_error(format('select public.projects_share_get(%L)', v_id), 'NO_RIGHT');
-  perform pg_temp.expect_error(format('select public.projects_share_set(%L, ''{}''::uuid[])', v_id), 'NO_RIGHT');
-  reset role;
-  perform pg_temp.act_as('demo_admin'); -- sharing ended
-  select public.projects_share_set(v_id, '{}'::uuid[]) into v;
-  if (v ->> 'removed')::int <> 1 then raise exception 'share_set removes'; end if;
+  v_note := (select n2.id from projects.notes n2 where n2.project_id = v_id limit 1);
+  perform pg_temp.act_as('demo_none'); -- Can view: opens, reads, downloads; changes nothing (NO_RIGHT)
+  select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'viewer sees own + shared: %', n; end if;
+  if (select mine from public.projects_list(v_code, null, null)) then raise exception 'shared one is not mine'; end if;
   select public.projects_get(v_id) into v;
-  if (v -> 'events' -> 0 ->> 'action') <> 'sharing ended for' then raise exception 'unshare event'; end if;
+  if (v ->> 'can_edit')::boolean or (v ->> 'can_share')::boolean or (v ->> 'level') <> 'read' then raise exception 'viewer get: %', v; end if;
+  select public.projects_run_get(v_run) into v; if (v -> 'run' ->> 'can_edit')::boolean then raise exception 'viewer run can_edit'; end if;
+  perform public.projects_export(v_id);
+  perform public.core_share_get('projects', 'project', v_id::text);   -- he sees who else may open it
+  perform pg_temp.expect_error(format('select public.core_share_set(''projects'', ''project'', %L, ''edit'', ''[]''::jsonb)', v_id), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_update(%L, ''x'', ''Consultant'', ''x'', ''UAE'')', v_id), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_note_save(%L, ''ahu'', ''x'', ''["A"]''::jsonb, ''[{"section":"","component":"Panel","cells":["1"],"kind":"row","key":"unit data||panel"}]''::jsonb, '''')', v_id), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_note_delete(%L)', v_note), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_save(%L, ''ahu-riyadh'', ''pdf'', ''x.pdf'', ''[{"type":"text","spec":"x"}]''::jsonb)', v_id), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_fill_section(%L, 1, ''Noted'', false, null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_split(%L, 2, ''[]''::jsonb, null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_join(%L, 3, null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_submit_answers(%L, ''[]''::jsonb)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_delete(%L)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error(format('select public.projects_run_save_review(%L, 2, ''x'', null)', v_run), 'NO_RIGHT');
+  reset role;
+  perform pg_temp.act_as('demo_user'); -- Can edit: he works in it; he still cannot share it (not the owner)
+  perform public.core_share_set('projects', 'project', v_id::text, null,
+    jsonb_build_array(jsonb_build_object('type', 'user', 'id', (select id from t_ids where k = 'demo_none'), 'level', 'edit')));
   reset role;
   perform pg_temp.act_as('demo_none');
-  select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'ex-member sees own only'; end if;
+  select public.projects_get(v_id) into v;
+  if not (v ->> 'can_edit')::boolean or (v ->> 'can_share')::boolean or (v ->> 'level') <> 'contribute' then raise exception 'editor get: %', v; end if;
+  perform public.projects_update(v_id, 'Sample Tower D', 'Contractor', 'Sample Consultants', 'UAE');
+  perform public.projects_run_save_line(v_run, 2, 'Comply', 'by a shared editor', null);
+  perform pg_temp.expect_error(format('select public.core_share_set(''projects'', ''project'', %L, ''edit'', ''[]''::jsonb)', v_id), 'NO_RIGHT');
+  reset role;
+  if (select name from core.containers where tile_id = 'projects' and kind = 'project' and id = v_id::text) <> v_code || ' Sample Tower D' then
+    raise exception 'renaming the project renames its container';
+  end if;
+  -- the tile level is the ceiling: level read with a Can edit share reads only, and creates nothing
+  update core.tile_access set level = 'read' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_none');
+  perform pg_temp.act_as('demo_none');
+  select public.projects_get(v_id) into v; if (v ->> 'can_edit')::boolean or (v ->> 'level') <> 'read' then raise exception 'read level ceiling: %', v; end if;
+  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', null)', v_run), 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_create(''x'', ''Consultant'', ''x'', ''UAE'')', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_dn_add_rows(''ahu'', ''[]''::jsonb)', 'NO_RIGHT');
+  perform pg_temp.expect_error('select public.projects_po_collect(''ahu'', ''[]''::jsonb)', 'NO_RIGHT');
+  select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'a reader still sees his own and the shared one'; end if;
+  select public.projects_get((select x.id from public.projects_list('Third Sample', null, null) x)) into v;   -- his own project: reading only at level read
+  if (v ->> 'can_edit')::boolean or (v ->> 'can_share')::boolean then raise exception 'own project at level read: %', v; end if;
+  reset role;
+  -- level approve, not a manager: TL Review and the knowledge base, but only in the projects he may open
+  update core.tile_access set level = 'approve' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_none');
+  perform pg_temp.act_as('demo_none');
+  select public.projects_run_get(v_run) into v; if not (v -> 'run' ->> 'can_review')::boolean or not (v -> 'run' ->> 'can_edit')::boolean then raise exception 'approver run flags: %', v -> 'run'; end if;
+  perform public.projects_run_save_review(v_run, 2, 'checked by an approver', null);
+  perform public.projects_lib_lines('ahu-riyadh');
+  select count(*) into n from public.projects_list(null, null, null); if n <> 2 then raise exception 'approve is not manage: %', n; end if;
+  if (select bool_or(sees_all) from public.projects_list(null, null, null)) then raise exception 'approver sees_all'; end if;
+  reset role;
+  update core.tile_access set level = 'contribute' where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_none');
+  -- a group: shared with a group he is in, Can edit
+  insert into core.groups (id, name) values ('00000000-0000-0000-0000-0000000000a1', 'Sample team');
+  insert into core.group_members (group_id, user_id) select '00000000-0000-0000-0000-0000000000a1', id from t_ids where k = 'demo_none';
+  perform pg_temp.act_as('demo_user');
+  perform public.core_share_set('projects', 'project', v_id::text, null,
+    '[{"type": "group", "id": "00000000-0000-0000-0000-0000000000a1", "level": "edit"}]'::jsonb);
+  reset role;
+  perform pg_temp.act_as('demo_none');
+  perform public.projects_run_save_line(v_run, 2, 'Comply', 'through the group', null);
+  reset role;
+  -- everyone in the tile: can view, then can edit
+  perform pg_temp.act_as('demo_user');
+  perform public.core_share_set('projects', 'project', v_id::text, 'read', '[]'::jsonb);
+  reset role;
+  perform pg_temp.act_as('demo_none');
+  select public.projects_get(v_id) into v; if (v ->> 'can_edit')::boolean or (v -> 'access' ->> 'everyone') <> 'read' then raise exception 'everyone can view: %', v; end if;
+  reset role;
+  perform pg_temp.act_as('demo_user');
+  perform public.core_share_set('projects', 'project', v_id::text, 'edit', '[]'::jsonb);
+  reset role;
+  perform pg_temp.act_as('demo_none');
+  select public.projects_get(v_id) into v; if not (v ->> 'can_edit')::boolean then raise exception 'everyone can edit: %', v; end if;
+  reset role;
+  -- a manager opens and shares any project, private ones too
+  perform pg_temp.act_as('demo_admin');
+  select public.projects_get(v_id) into v; if not (v ->> 'can_share')::boolean or (v ->> 'level') <> 'manage' or (v -> 'access' ->> 'mine')::boolean then raise exception 'manager get: %', v; end if;
+  perform public.core_share_set('projects', 'project', v_id::text, null, '[]'::jsonb);   -- private again, shared with nobody
+  if not (select bool_and(sees_all) from public.projects_list(null, null, null)) then raise exception 'manager sees_all'; end if;
+  reset role;
+  perform pg_temp.act_as('demo_none');
+  select count(*) into n from public.projects_list(null, null, null); if n <> 1 then raise exception 'unshared: own only'; end if;
   perform pg_temp.expect_error(format('select public.projects_get(%L)', v_id), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.core_share_get(''projects'', ''project'', %L)', v_id), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.projects_run_save_line(%L, 2, ''Comply'', '''', null)', v_run), 'NOT_FOUND');
   reset role;
   delete from core.tile_access where tile_id = 'projects' and user_id = (select id from t_ids where k = 'demo_none');
 

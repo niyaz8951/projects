@@ -6,7 +6,7 @@
   Core.requireLogin({ tile: PR.TILE }).then(function (me) {
     var canEdit = PR.canEdit(me);
     var rows = [];
-    var seesAll = !!(me.tile_admin || me.is_super); // a tile admin or the super user sees every project; the database confirms it per answer
+    var seesAll = PR.isManager(me); // a manager of the tile (or the super user) sees every project; the database confirms it per answer
     var timer = null;
     var seq = 0;
 
@@ -64,7 +64,7 @@
           click: function () { open(p.id); },
           keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(p.id); } } } },
           el('td', null, el('span', { class: 'name', text: p.name }),
-            !seesAll && p.created_by_name !== me.username ? el('span', { class: 'badge accent', text: 'shared with you' }) : null,
+            !seesAll && !p.mine ? el('span', { class: 'badge accent', text: p.level === 'read' ? 'shared with you to view' : 'shared with you' }) : null,
             el('span', { class: 'sub code', text: p.code })),
           el('td', { 'data-label': 'Client' }, p.client_name, el('span', { class: 'sub', text: p.client_type })),
           el('td', { 'data-label': 'Region', text: p.region }),

@@ -148,6 +148,7 @@
     return Promise.all([Api.prGet(Hub.token(), projectId), Api.cmOptions(Hub.token())]);
   }).then(function (res) {
     project = res[0].project; products = res[1].products || []; notes = res[0].notes || [];
+    if (!project.can_edit) { PR.viewOnly(project); return; }
     Hub.setBack(project.code + " " + project.name, "/projects/project.html?id=" + encodeURIComponent(projectId));
     Core.setTitle("Add a specification - " + project.code);
     $("as-intro").textContent = "For " + project.code + " " + project.name + ". Choose the product and factory, give the specification, and start filling. Clauses answered before come filled in.";

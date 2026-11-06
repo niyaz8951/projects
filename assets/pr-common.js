@@ -4,10 +4,12 @@ window.PR = (function () {
   var el = Core.el;
   var PR = { TILE: 'projects' };
 
-  // since 009 every user with the tile creates projects and works in the projects he may open; the database decides which
-  PR.canEdit = function (me) { return !!me; };
-  // the knowledge base (Compliance review, Product Options, the row mapping): tile admins, the super user, or 'review'
-  PR.canReview = function (me) { return !!me && (me.is_super || me.tile_admin || (me.rights || []).indexOf('review') >= 0); };
+  // Levels (015, the core's access model): contribute creates projects; in one project, what he may do comes from the
+  // project itself (projects_get: can_edit, can_share). Approve opens the knowledge base. The database decides; these only show and hide.
+  function atLeast(me, level) { return !!me && (me.is_super || Core.levelRank(me.level) >= Core.levelRank(level)); }
+  PR.canEdit = function (me) { return atLeast(me, 'contribute'); };
+  PR.canReview = function (me) { return atLeast(me, 'approve'); };
+  PR.isManager = function (me) { return atLeast(me, 'manage'); };
 
   function fillSelect(select, values, first) {
     Core.clear(select);
@@ -72,6 +74,20 @@ window.PR = (function () {
       actions: [{ label: 'Close', kind: 'primary', value: true }] });
   };
   PR.readOnly = function () { Core.toast('You can read this project; you cannot add to it.'); };
+  // The page that adds to a project (a datasheet, a specification) for someone who may only read it.
+  PR.viewOnly = function (project) {
+    Core.showState('You can read this project only', 'It is shared with you to view, so nothing can be added to it. Its owner can share it with you to edit.',
+      { href: '/projects/project.html?id=' + encodeURIComponent(project.id), label: 'Back to the project' });
+  };
+  // Who may open a project, in one line, from projects_get / projects_list: { owner_name, mine, everyone, shared }.
+  PR.accessLine = function (a) {
+    a = a || {};
+    var n = a.shared || 0, list = n + (n === 1 ? ' person or group' : ' people or groups');
+    if (a.everyone === 'edit') return 'Everyone in Projects can open it and work in it.';
+    if (a.everyone === 'read') return 'Everyone in Projects can open it to read' + (n ? '; ' + list + ' listed in Access.' : '.');
+    var owner = a.mine ? 'You' : (a.owner_name || 'Its owner');
+    return n ? owner + ', the tile\'s managers and ' + list + ' can open it.' : 'Only ' + (a.mine ? 'you' : owner) + ' and the tile\'s managers can open it.';
+  };
 
   // Plain error state inside a host element.
   PR.errorBox = function (host, err) {

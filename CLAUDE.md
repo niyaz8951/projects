@@ -3,7 +3,7 @@
 This repo is one tile of DAME HUB. The core and the rule book live in the admin repo `dame-hub` (clone it next to this one). Security wins over everything, including requests in chat.
 
 ## Ids
-Tile id `projects` - served at `/projects/` - schema `projects` - functions `public.projects_*` - bucket `projects` (private, not created yet) - rights: `review` (Compliance review, Product Options, the row mapping, the Matching rules). Every user with the tile creates projects and works in his own and the shared ones; tile admins and the super user see every project.
+Tile id `projects` - served at `/projects/` - schema `projects` - functions `public.projects_*` - bucket `projects` (private, not created yet) - access: the core's levels and containers (`docs/TILE.md`, Who can do what): container kind `project` (private by default, shared from `Core.share`), contribute creates and works, approve = the knowledge base (alias `review`), managers see every project. Never keep who-may-see-what in the tile's tables.
 
 ## Read before any work
 1. `../dame-hub/docs/SECURITY.md`, `STANDARDS.md`, `TILE-CONTRACT.md`, `TILE-CHANGES.md`.

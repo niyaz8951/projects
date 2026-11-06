@@ -358,6 +358,7 @@
 
     return Promise.all([Api.rpc('projects_get', { p_id: id }), Api.rpc('projects_products')]).then(function (res) {
       project = res[0]; products = res[1] || [];
+      if (!project.can_edit) { PR.viewOnly(project); return; }
       Core.setTitle('Read a datasheet - ' + project.code);
       $('#intro').textContent = 'Project ' + project.code + ' · ' + project.name + ' · ' + project.region + '. The PDF is read on your device; the table is saved in this project.';
       Core.clear(productSel);
